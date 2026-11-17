@@ -1,0 +1,11 @@
+.venv/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+.pytest_tmp/
+*.egg-info/
+data/
+runs/
+.env
+*.pkl
+*.joblib

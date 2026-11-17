@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "synthetic-funnel"
+version = "0.11.0"
+description = "Reusable synthetic referral funnel events with configurable nonnegative delays"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.4,<3", "pyarrow>=19,<25", "scikit-learn>=1.9,<2"]
+
+[project.scripts]
+synthetic-funnel = "synthetic_funnel.__main__:main"
+
+[dependency-groups]
+docs = ["myst-parser>=4,<6", "sphinx>=8.2,<10", "sphinx-rtd-theme>=3.1,<4"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/synthetic_funnel"]

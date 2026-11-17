@@ -1,0 +1,40 @@
+/competitions/
+.ruff_cache/
+.ty_cache/
+.mypy_cache/
+
+# Local environments and generated files
+.venv/
+.venv-system/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp/
+*.egg-info/
+dist/
+build/
+
+# Credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+config.local.toml
+
+# Local datasets and serialized models
+data/
+*.parquet
+*.arrow
+*.feather
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+*.joblib

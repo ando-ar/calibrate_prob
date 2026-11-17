@@ -1,0 +1,15 @@
+/* Keep Japanese descriptions and long Python signatures inside their cells. */
+.rst-content table.docutils :is(th, td),
+.rst-content table.docutils code.literal {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.rst-content #python-api table.docutils {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.rst-content #python-api table.docutils th:first-child {
+    width: 40%;
+}

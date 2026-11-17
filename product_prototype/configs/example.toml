@@ -1,0 +1,141 @@
+# Every path is relative to this file. Copy this config for each independent experiment.
+[experiment]
+output_dir = "../runs/demo"
+feature_snapshot_mode = "latest"
+seed = 42
+threads = 2
+memory_limit = "2GB"
+
+[source]
+kind = "file" # For Redshift: kind = "redshift", table = "analytics.recommendation_history"
+table = "analytics.recommendation_history" # Used only by Redshift extraction or SQL preview.
+path = "../data/demo.parquet"
+user_column = "user_id"
+item_column = "item_id"
+anchor_column = "shoukai_dt" # Introduction/evaluation date, including non-applications.
+row_id_column = "event_id"
+timezone = "Asia/Tokyo" # Timezone of naive timestamps AND business-day boundaries.
+chunk_rows = 50000
+
+# For Redshift, credentials are REDSHIFT_HOST/DATABASE/USER/PASSWORD environment variables.
+# [source.connection]
+# port = 5439
+# timeout_seconds = 60
+
+[labels]
+application_column = "oubo_dt"
+screen_column = "shorui_tsuuka_dt"
+target_column = "kettei_dt" # Decision is not actual joining. Rename to actual hire date if available.
+fee_column = "fee_yen" # Remove this and the two_stage scorer if actual fees are unavailable.
+horizon_days = 120 # Initial hypothesis: ~7+14+60=81 days plus 39 days buffer; not a coverage guarantee.
+as_of = "2026-11-01" # Latest date at which outcomes are known.
+
+[split]
+train_start = "2023-01-01"
+train_end = "2025-11-01"
+validation_end = "2026-05-01"
+test_end = "2026-07-01"
+purge_label_overlap = true # Drop last horizon_days of train and validation anchors.
+
+[features]
+numeric = ["skill_match", "salary_gap", "old_application_score", "old_screen_score"]
+categorical = ["market", "role"]
+
+[ranking]
+max_per_user_per_day = 5 # Example operating limit; replace with the actual product limit.
+daily_budget_per_active_user = 5 # Legacy competition total budget = active users * 5.
+# daily_budget = 100000 # Optional absolute total daily cap; both caps apply if supplied.
+partition_columns = ["market"] # Total budget and macro metrics per market. User cap remains global.
+support_user_top_n = 5 # Legacy support score: sum of top five pair scores, before recommendation caps.
+support_top_k = 10000 # Legacy support precision cutoff, clipped to available subjects per day.
+
+[evaluation]
+# All scorers use this SAME proxy to avoid comparing models against different targets.
+proxy = "delta"
+selection_metric = "macro_daily_observed_fee_yen"
+higher_is_better = true
+# Without actual fees use macro_daily_observed_positive_proxy_yen or observed_selected_positives.
+
+[[datasets]]
+name = "uniform_36m"
+mode = "uniform"
+months = 36
+max_rows = 300000
+rationale = "Equal training-row budget baseline over three years; 300k is an initial runtime budget, not a required limit."
+
+[[datasets]]
+name = "stage_36m"
+mode = "stage"
+months = 36
+max_rows = 300000
+negative_shares = {screen = 0.15, apply = 0.35, no_apply = 0.50}
+rationale = "Keep every decision; compare Delta's illustrative negative-stage mix against uniform extraction. Not a known commercial optimum."
+
+[[datasets]]
+name = "stage_12m_balanced"
+mode = "stage"
+months = 12
+max_rows = 300000
+balance_columns = ["_month", "market"]
+negative_shares = {screen = 0.15, apply = 0.35, no_apply = 0.50}
+rationale = "Trade off recent-market relevance against decision count; equal month/market quotas avoid high-volume cells dominating. Backfill scarce cells."
+
+[[models]]
+name = "logistic"
+kind = "logistic"
+sample_weight = "none"
+parameters = {C = 1.0, max_iter = 1000}
+
+[[models]]
+name = "logistic_ipw"
+kind = "logistic"
+sample_weight = "inverse_sampling"
+parameters = {C = 1.0, max_iter = 1000}
+
+[[models]]
+name = "hist_gbdt"
+kind = "hist_gradient_boosting"
+sample_weight = "none"
+parameters = {max_iter = 100, max_leaf_nodes = 15, learning_rate = 0.1, l2_regularization = 1.0}
+
+[[proxies]]
+name = "constant"
+kind = "constant"
+fallback_fee_yen = 2000000.0
+rationale = "Illustrative baseline of annual salary 6m yen times one third. Replace using business fee conventions."
+
+[[proxies]]
+name = "delta"
+kind = "delta_salary"
+lower_column = "salary_lower_man"
+upper_column = "salary_upper_man"
+desired_column = "desired_salary_man"
+desired_weight = 0.5
+salary_unit_yen = 10000.0
+fee_rate = 0.3333333333333333
+fallback_fee_yen = 2000000.0
+rationale = "Half salary-band midpoint, half desired salary clipped to band. Competition starting hypothesis; midpoint alone is another candidate. Rates and units are illustrative."
+
+[[scorers]]
+name = "probability"
+kind = "probability"
+proxy = "constant"
+
+[[scorers]]
+name = "expected_proxy"
+kind = "probability_times_proxy"
+proxy = "delta"
+
+[[scorers]]
+name = "delta_odds"
+kind = "odds_times_proxy"
+proxy = "delta"
+
+[[scorers]]
+name = "epsilon"
+kind = "two_stage_fee"
+proxy = "delta"
+ridge_alpha = 1.0
+# fee_dataset = "stage_36m" # Optional independent acquisition plan for the amount model.
+# fee_max_rows = 1000 # Optional fixed-hash subset; omission uses every observed positive fee.
+# fee_rationale = "Compare amount sample count with classifier rows held fixed."

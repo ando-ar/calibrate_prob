@@ -1,0 +1,11 @@
+{
+  "rows": 3000000,
+  "seed": 42,
+  "legacy_scores": {
+    "enabled": true,
+    "training_window_days": [1,30,365],
+    "training_referrals_per_day": 10000,
+    "negative_reservoir_size": 100000,
+    "seed": 1931
+  }
+}
