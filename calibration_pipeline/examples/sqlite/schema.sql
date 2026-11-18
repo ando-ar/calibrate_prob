@@ -10,8 +10,15 @@ CREATE TABLE user_feature_daily (
     user_id INTEGER NOT NULL,
     snapshot_date TEXT NOT NULL,
     seeker_skill REAL NOT NULL,
+    occupation TEXT,
     PRIMARY KEY (user_id, snapshot_date)
 );
 
+-- Synthetic user attribute. Some users have no occupation to exercise NULL handling.
 INSERT INTO user_feature_daily
-SELECT user_id, date(shoukai_dt), seeker_skill FROM scored_referrals;
+SELECT user_id, date(shoukai_dt), seeker_skill,
+       CASE WHEN user_id % 7 = 0 THEN NULL
+            WHEN user_id % 3 = 0 THEN 'engineering'
+            WHEN user_id % 3 = 1 THEN 'sales'
+            ELSE 'office' END
+FROM scored_referrals;

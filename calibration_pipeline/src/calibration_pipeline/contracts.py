@@ -120,6 +120,36 @@ def sql_numbers(values: pl.Series, context: str, *, nullable: bool = False) -> p
     return converted
 
 
+def categorical_text(values: pl.Series, name: str) -> pl.Series:
+    """Map one categorical column to its training-time string form.
+
+    The user decides per column whether a code such as 1, 2, 3 is an order
+    (numeric feature) or a category (this list). Numeric values become stable
+    strings here, so an integer in the training SQL and its string spelling in
+    a candidate CSV land in the same category.
+    """
+    if values.dtype not in (pl.String, pl.Null):
+        if not values.dtype.is_numeric():
+            raise ValueError(f"{name}: expected a categorical string or numeric column")
+        numeric = sql_numbers(values, name, nullable=True)
+        if numeric.dtype.is_integer():
+            values = numeric.cast(pl.String)
+        else:
+            # An integral float such as 1.0 and its integer spelling 1 name one category.
+            converted = numeric.cast(pl.Float64)
+            whole = converted.cast(pl.Int64, strict=False)
+            integral = (converted == converted.round(0)) & whole.is_not_null()
+            values = pl.select(
+                pl.when(pl.Series(integral)).then(pl.Series(whole)).otherwise(pl.Series(converted))
+                .cast(pl.String).alias(name)
+            ).to_series()
+    # A tag on every present value keeps all possible strings distinct from null.
+    frame = pl.DataFrame([values.alias(name)])
+    return frame.select(
+        (pl.lit("1") + pl.col(name).cast(pl.String)).fill_null("0").alias(name)
+    ).to_series()
+
+
 def labels(frame: pl.DataFrame, config: Config, role: str) -> np.ndarray:
     y = sql_numbers(frame[config.label], f"{role}.{config.label}")
     if not y.is_in([0, 1]).all():
@@ -132,12 +162,5 @@ def labels(frame: pl.DataFrame, config: Config, role: str) -> np.ndarray:
 def model_frame(frame: pl.DataFrame, config: Config) -> pl.DataFrame:
     columns = [sql_numbers(frame[config.score], config.score)]
     columns.extend(sql_numbers(frame[name], name, nullable=True) for name in config.numeric)
-    for name in config.categorical:
-        values = frame[name]
-        if values.dtype not in (pl.String, pl.Null):
-            raise ValueError(f"{name}: expected a categorical string column")
-        # A tag on every present value keeps all possible strings distinct from null.
-        columns.append(frame.select(
-            (pl.lit("1") + pl.col(name).cast(pl.String)).fill_null("0").alias(name)
-        ).to_series())
+    columns.extend(categorical_text(frame[name], name) for name in config.categorical)
     return pl.DataFrame(columns)

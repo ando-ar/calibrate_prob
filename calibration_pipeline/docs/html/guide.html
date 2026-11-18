@@ -85,10 +85,20 @@
 <h2>学習<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
 <p>学習TOMLの例です。設定値の検証は <a class="reference internal" href="_generated/calibration_pipeline.config.html#calibration_pipeline.config.load_config" title="calibration_pipeline.config.load_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">calibration_pipeline.config.load_config()</span></code></a> が行います。</p>
 <div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[model]</span>
+<span class="c1"># 学習SQLが返す元スコアの列名。欠損のない有限値の数値が必要です。</span>
 <span class="n">score</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"oubo_score"</span>
+<span class="c1"># 学習SQLが返す確定ラベルの列名。0か1の数値が必要です。</span>
 <span class="n">label</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"label"</span>
+<span class="c1"># 推論の出力に付ける予測確率の列名。学習SQLの戻り値には不要です。</span>
 <span class="n">probability</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"oubo_prob"</span>
+<span class="c1"># 数値特徴量の列名。NULLとNaNは欠損として扱い、無限値はエラーになります。</span>
+<span class="c1"># 1,2,3のような数値コードでも、順序に意味があるならこちらへ入れます。</span>
 <span class="n">numeric_features</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"seeker_skill"</span><span class="p">]</span>
+<span class="c1"># カテゴリ特徴量の列名。順序に意味がない数値コードはこちらへ入れます。</span>
+<span class="c1"># 文字列・数値いずれの列も受け付け、NULLや学習時に見なかった値も扱えます。</span>
+<span class="c1"># 数値はパイプラインが決まった規則で文字列に変換してCatBoostに渡します。</span>
+<span class="n">categorical_features</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"occupation"</span><span class="p">]</span>
+<span class="c1"># 校正評価のECEとプロットを計算するビン数。</span>
 <span class="n">bins</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span>
 </pre></div>
 </div>
@@ -113,8 +123,9 @@
 </table>
 <p>SQL作成者が期間の順序・重複・ラベルの確定・母集団・特徴量の取得時点を管理します。
 数値特徴量はNULL・NaNを欠損として扱いますが、無限値は使えません。
-元スコアは欠損のない有限値、ラベルは数値の0か1、カテゴリ特徴量は文字列です。
-カテゴリのNULLや学習時に現れなかった文字列も使用できます。</p>
+元スコアは欠損のない有限値、ラベルは数値の0か1、カテゴリ特徴量は文字列または数値の列です。
+1,2,3のような数値コードを順序として扱うかカテゴリとして扱うかは、設定のどちらのリストに
+列を入れるかで決まります。カテゴリのNULLや学習時に現れなかった値も使用できます。</p>
 <p>SQLite用の抽出例です。</p>
 <div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- 合成の紹介履歴を、観測締切の異なる学習・校正・検証期間に分ける。</span>
 <span class="k">WITH</span><span class="w"> </span><span class="n">periods</span><span class="p">(</span><span class="n">row_role</span><span class="p">,</span><span class="w"> </span><span class="n">start_date</span><span class="p">,</span><span class="w"> </span><span class="n">end_date</span><span class="p">,</span><span class="w"> </span><span class="n">observed_through</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="p">(</span>
@@ -137,7 +148,7 @@
 <span class="w">    </span><span class="k">FROM</span><span class="w"> </span><span class="n">referrals</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">r</span>
 <span class="w">    </span><span class="k">WHERE</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">application_deadline</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">datetime</span><span class="p">(</span><span class="n">r</span><span class="p">.</span><span class="n">observed_through</span><span class="p">)</span>
 <span class="p">)</span>
-<span class="k">SELECT</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">row_role</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">oubo_score</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">seeker_skill</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">label</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">row_role</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">oubo_score</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">seeker_skill</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">occupation</span><span class="p">,</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">label</span>
 <span class="k">FROM</span><span class="w"> </span><span class="n">ranked_referrals</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">r</span>
 <span class="k">LEFT</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">main</span><span class="p">.</span><span class="n">user_feature_daily</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">f</span>
 <span class="w">  </span><span class="k">ON</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">r</span><span class="p">.</span><span class="n">user_id</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">snapshot_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">date</span><span class="p">(</span><span class="n">r</span><span class="p">.</span><span class="n">shoukai_dt</span><span class="p">)</span>
@@ -158,7 +169,7 @@ CSVでは8桁の数字、Parquetでは整数型を使います。</p>
 推論SQLは各候補に対してちょうど1行、<code class="docutils literal notranslate"><span class="pre">candidate_row_id</span></code>・元スコア・必要な特徴量を返してください。
 推論TOMLは空かコメントのみです。列の設定は学習済みモデルから読み込みます。</p>
 <div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- 推論日の特徴量を結合し、候補行ごとにモデルの入力を返す。</span>
-<span class="k">SELECT</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">candidate_row_id</span><span class="p">,</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">oubo_score</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">seeker_skill</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">candidate_row_id</span><span class="p">,</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">oubo_score</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">seeker_skill</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">occupation</span>
 <span class="k">FROM</span><span class="w"> </span><span class="n">calibration_candidates</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="k">c</span>
 <span class="k">LEFT</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">main</span><span class="p">.</span><span class="n">user_feature_daily</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">f</span>
 <span class="w">  </span><span class="k">ON</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">user_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">c</span><span class="p">.</span><span class="n">user_id</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">f</span><span class="p">.</span><span class="n">snapshot_date</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">date</span><span class="p">(</span><span class="k">c</span><span class="p">.</span><span class="n">shoukai_dt</span><span class="p">)</span>

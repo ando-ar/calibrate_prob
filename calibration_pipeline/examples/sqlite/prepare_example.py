@@ -59,8 +59,9 @@ def prepare(train_inputs: Path, inference_inputs: Path, generator_root: Path):
         with closing(sqlite3.connect(warehouse)) as database, database:
             database.executescript((HERE / "schema.sql").read_text(encoding="utf-8"))
             database.executemany(
-                "INSERT INTO user_feature_daily VALUES (?, ?, ?)",
-                ((row["user_id"], local_time(row["shoukai_dt"])[:10], row["seeker_skill"])
+                "INSERT INTO user_feature_daily VALUES (?, ?, ?, ?)",
+                ((row["user_id"], local_time(row["shoukai_dt"])[:10], row["seeker_skill"],
+                  None if row["user_id"] % 7 == 0 else ("engineering", "sales", "office")[row["user_id"] % 3])
                  for row in candidate_rows),
             )
         original = Path(candidate_temporary) / "original_score.csv"

@@ -19,7 +19,7 @@ ranked_referrals AS (
     FROM referrals AS r
     WHERE r.application_deadline <= datetime(r.observed_through)
 )
-SELECT r.row_role, r.oubo_score, f.seeker_skill, r.label
+SELECT r.row_role, r.oubo_score, f.seeker_skill, f.occupation, r.label
 FROM ranked_referrals AS r
 LEFT JOIN main.user_feature_daily AS f
   ON f.user_id = r.user_id AND f.snapshot_date = date(r.shoukai_dt)

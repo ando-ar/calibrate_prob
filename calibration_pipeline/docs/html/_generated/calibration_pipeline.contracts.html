@@ -136,6 +136,16 @@
 <dd></dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="calibration_pipeline.contracts.categorical_text">
+<span class="sig-prename descclassname"><span class="pre">calibration_pipeline.contracts.</span></span><span class="sig-name descname"><span class="pre">categorical_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">values</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Series</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Series</span></span></span><a class="reference internal" href="../_modules/calibration_pipeline/contracts.html#categorical_text"><span class="viewcode-link"><span class="pre">[ソース]</span></span></a><a class="headerlink" href="#calibration_pipeline.contracts.categorical_text" title="Link to this definition"></a></dt>
+<dd><p>Map one categorical column to its training-time string form.</p>
+<p>The user decides per column whether a code such as 1, 2, 3 is an order
+(numeric feature) or a category (this list). Numeric values become stable
+strings here, so an integer in the training SQL and its string spelling in
+a candidate CSV land in the same category.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="calibration_pipeline.contracts.labels">
 <span class="sig-prename descclassname"><span class="pre">calibration_pipeline.contracts.</span></span><span class="sig-name descname"><span class="pre">labels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frame</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="calibration_pipeline.config.html#calibration_pipeline.config.Config" title="calibration_pipeline.config.Config"><span class="pre">Config</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">role</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="reference internal" href="../_modules/calibration_pipeline/contracts.html#labels"><span class="viewcode-link"><span class="pre">[ソース]</span></span></a><a class="headerlink" href="#calibration_pipeline.contracts.labels" title="Link to this definition"></a></dt>
 <dd></dd></dl>
