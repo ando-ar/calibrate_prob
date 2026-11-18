@@ -2,7 +2,7 @@
 import copy
 import heapq
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -86,6 +86,78 @@ class MarketConfig:
             raise ValueError('Training density and reservoir size must be positive integers')
 
 
+@dataclass
+class ReplayIntroductions:
+    """External introduction policy for :func:`simulate` (competition replay, #35).
+
+    The market is *not* deserialised from a huge exported snapshot.  Instead the
+    whole run is re-simulated from day 0 with the same ``MarketConfig`` and seed;
+    because :func:`simulate` is deterministic, the state at ``eval_start`` is bit
+    identical to the frozen ``D_train`` state of the base market.  This is the
+    "reproduce by re-simulation" option of COMPETITION.md §5.2/§3.1: it keeps
+    memory bounded (only the live actor dicts and recent chunks, exactly as in a
+    normal run) and needs no state file.  ``make_snapshot``/``resume`` remain
+    available for callers that prefer an explicit snapshot export.
+
+    Introduction policy
+        ``policy`` maps a day offset to an iterable of ``(seeker_index, job_index)``
+        pairs that the evaluator already selected with the §2.1 budget rules.
+        Days in ``[eval_start, eval_end)`` use ``policy`` exclusively (an absent
+        or empty entry means *no introductions* that day: unranked candidates are
+        never introduced).  Days before ``eval_start`` use the built-in random
+        pool draw, and days at/after ``eval_end`` introduce nothing at all -- the
+        run simply continues until ``config.days`` so every selected row can
+        mature through ``D_eval_end + H``.
+
+    RNG discipline
+        The policy *replaces* the built-in ``rng.randrange`` introduction draw and
+        consumes no value from the market ``random.Random`` stream.  Consequently
+        funnel transitions, exits, probabilities, delays and the counterfactual
+        stream keep their existing per-event semantics, and identical replay
+        inputs always produce identical outputs.  Relative to the base market the
+        funnel stream is simply not advanced by the skipped introduction draws on
+        replay days; this is the intended branch behaviour (cf. ``branch_seed``).
+
+    ``introduced``/``skipped`` are observability fields filled by :func:`simulate`:
+    ``introduced[day]`` lists pairs actually introduced, and ``skipped`` lists
+    ``(day, seeker, job, reason)`` entries rejected by the candidate recipe.
+    """
+
+    eval_start: int
+    eval_end: int
+    policy: dict[int, list[tuple[int, int]]] = field(default_factory=dict)
+    validate: bool = True
+    introduced: dict[int, list[tuple[int, int]]] = field(default_factory=dict)
+    skipped: list[tuple[int, int, int]] = field(default_factory=list)
+
+    def __post_init__(self):
+        if type(self.eval_start) is not int or type(self.eval_end) is not int or self.eval_start >= self.eval_end:
+            raise ValueError('Replay requires integer eval_start < eval_end')
+        self.policy = {int(day): [(int(s), int(j)) for s, j in pairs]
+                       for day, pairs in self.policy.items()}
+
+    def mode(self, day: int) -> str:
+        if day < self.eval_start:
+            return 'builtin'
+        if day < self.eval_end:
+            return 'policy'
+        return 'none'
+
+    def pairs_for_day(self, day: int):
+        return self.policy.get(day, ())
+
+
+def replay_market(config, *, eval_start, eval_end, policy, validate=True, **simulate_kwargs):
+    """Re-run a market from scratch under an external introduction policy.
+
+    Convenience wrapper around :func:`simulate`; returns the same
+    ``(rows, seekers, jobs)`` tuple so the replay output is a normal market export.
+    """
+    return simulate(config, replay=ReplayIntroductions(
+        eval_start=eval_start, eval_end=eval_end, policy=policy, validate=validate,
+    ), **simulate_kwargs)
+
+
 NUMERIC_COLUMNS=(0,1,2,5,6)  # arrival, skill, salary, remote flag, hidden motivation (categories are columns 3 and 4)
 # Item profiles additionally carry fee_rate in column 8. It is deliberately not a
 # model feature: the fee is a deterministic attribute, never a latent value.
@@ -144,7 +216,7 @@ def counterfactual(rows,day,rng):
 
 
 def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_index=None,
-             branch_seed=None, retain='all', daily_stats=None):
+             branch_seed=None, retain='all', daily_stats=None, replay=None, population=None):
     """Simulate the same market; optionally retain only observed applications.
 
     Retention changes storage, never introductions, random draws or outcomes.
@@ -152,7 +224,28 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
 
     If provided, daily_stats receives (day, live users, live items, introductions, new users,
     new items, applications, screenings, decisions) for each simulated day.
+
+    ``replay`` is an optional :class:`ReplayIntroductions`.  It replaces the
+    built-in random introduction draw on evaluation days with an external
+    ranking policy (competition #35).  Without it the function is byte-for-byte
+    the base market generator.  Replay mode is mutually exclusive with
+    ``resume``/``retain='applications'`` (both are single-focal/compaction paths).
+
+    ``population`` is an optional ``{'seekers': [...], 'jobs': [...]}`` schedule
+    of pre-generated arrival profiles indexed by actor id.  It is normally
+    reconstructed from the published ``user``/``item`` (and latent) tables by
+    the evaluator.  Every arrival still consumes the same RNG draws as the base
+    market (the values are discarded and the scheduled profile is used), so the
+    market stream stays aligned up to the first replay day and submitted
+    ``user_id``/``item_id`` keys keep referring to the same actors on later
+    evaluation days even though the policy changes introduction draw counts.
     """
+    if replay is not None and (resume is not None or retain != 'all'):
+        raise ValueError('Replay requires retain=all and no resume')
+    if population is not None and resume is not None:
+        raise ValueError('population and resume cannot be combined')
+    population_seekers = None if population is None else population['seekers']
+    population_jobs = None if population is None else population['jobs']
     if retain not in ('all','applications'):
         raise ValueError('retain must be all or applications')
     if resume is not None and retain!='all':
@@ -290,7 +383,14 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             sid=len(seekers);skill=rng.random()
             # arrival, skill, desired salary, occupation, region, remote preference, hidden
             # motivation, departure (NaN while live)
-            seekers.append([day,skill,max(200,300+800*skill+rng.gauss(0,100)),rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
+            salary=max(200,300+800*skill+rng.gauss(0,100))
+            occupation=rng.choice(OCCUPATIONS);region=rng.choice(REGIONS)
+            remote=int(rng.random()<.5);motivation=rng.gauss(0,.5)
+            if population_seekers is None:
+                profile=[day,skill,salary,occupation,region,remote,motivation,np.nan]
+            else:
+                profile=list(population_seekers[sid]);profile[0]=day
+            seekers.append(profile)
             if seeker_table is not None:seeker_table[sid]=seekers[-1]
             live_s[sid]={'until': day+config.application_days,'pending': set(),'seen': set()}
         for _ in range(config.job_arrivals):
@@ -298,35 +398,73 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             # salary minimum is offered minus 100, clipped to 100.
             # TODO(issue #34 follow-up): redesign offered_salary with extra noise so it
             # is not trivially recoverable from skill; this issue keeps the current rule.
-            jobs.append([day,skill,salary,rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan,FEE_RATE_DEFAULT])
+            occupation=rng.choice(OCCUPATIONS);region=rng.choice(REGIONS)
+            remote=int(rng.random()<.5);motivation=rng.gauss(0,.5)
+            if population_jobs is None:
+                profile=[day,skill,salary,occupation,region,remote,motivation,np.nan,FEE_RATE_DEFAULT]
+            else:
+                profile=list(population_jobs[jid]);profile[0]=day
+            jobs.append(profile)
             if job_table is not None:job_table[jid]=jobs[-1]
             live_j[jid]={'until': day+config.posting_days,'pending': set()}
         process(day+INTRODUCTION_OFFSET_DAYS)
-        pools={}
-        for occupation in OCCUPATIONS:
-            for region in REGIONS:
-                ids=[jid for jid in live_j if jobs[jid][3]==occupation and (jobs[jid][4]==region or jobs[jid][5])]
-                ids.sort(key=lambda jid:max(100,jobs[jid][2]-100))
-                pools[occupation,region]=(ids,np.array([max(100,jobs[jid][2]-100) for jid in ids]))
+        mode='builtin' if replay is None else replay.mode(day)
         selected=[]
-        for sid,s in live_s.items():
-            if s['until']<=day:continue
-            profile=seekers[sid]
-            pool,lower=pools[profile[3],profile[4]]
-            n=int(np.searchsorted(lower,profile[2],side='left'))
-            if not n:continue
-            chosen=[]
-            for _ in range(200):
-                if len(chosen)>=min(config.referrals,n):break
-                jid=pool[rng.randrange(n)]
-                if jid in s['seen']:continue
-                s['seen'].add(jid);chosen.append(jid)
-            for jid in chosen:
-                other=sum(cases[e][-1]>=1 for e in s['pending'] if e in cases)
-                rivals=sum(cases[e][-1]>=1 for e in live_j[jid]['pending'] if e in cases)
-                selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals,
-                                 0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0,
-                                 0,np.nan,0,np.nan))
+        def add_introduction(sid,jid):
+            """Build one introduction row; metadata mirrors the built-in draw exactly."""
+            s=live_s[sid]
+            other=sum(cases[e][-1]>=1 for e in s['pending'] if e in cases)
+            rivals=sum(cases[e][-1]>=1 for e in live_j[jid]['pending'] if e in cases)
+            selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals,
+                             0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0,
+                             0,np.nan,0,np.nan))
+        if mode=='none':
+            # Maturation-only day: no new introductions (past the evaluation horizon).
+            pass
+        elif mode=='policy':
+            # External ranking policy.  No rng draw is consumed for selection, so
+            # the funnel stream is not perturbed by the number of introductions.
+            for sid,jid in replay.pairs_for_day(day):
+                s=live_s.get(sid)
+                # "Live" follows the DAILY_CANDIDATES recipe: still present in
+                # live_s / live_j (departure NULL or after :day).  Do not add an
+                # extra `until <= day` test here -- a seeker with an unresolved
+                # case can stay in live_s past `until` while departure_dt stays
+                # NULL, and the recipe still counts that pair as a candidate.
+                reason=None
+                if s is None:reason='no_seeker'
+                elif jid not in live_j:reason='no_item'
+                else:
+                    profile=seekers[sid];job=jobs[jid]
+                    if profile[3]!=job[3]:reason='occupation'
+                    elif not (job[4]==profile[4] or job[5]==1):reason='region'
+                    elif max(100,job[2]-100)>profile[2]:reason='salary'
+                    elif jid in s['seen']:reason='seen'
+                if reason is not None and (replay.validate or reason=='seen'):
+                    replay.skipped.append((day,sid,jid,reason));continue
+                s['seen'].add(jid);add_introduction(sid,jid)
+            replay.introduced[day]=[(int(r[0]),int(r[1])) for r in selected]
+        else:
+            pools={}
+            for occupation in OCCUPATIONS:
+                for region in REGIONS:
+                    ids=[jid for jid in live_j if jobs[jid][3]==occupation and (jobs[jid][4]==region or jobs[jid][5])]
+                    ids.sort(key=lambda jid:max(100,jobs[jid][2]-100))
+                    pools[occupation,region]=(ids,np.array([max(100,jobs[jid][2]-100) for jid in ids]))
+            for sid,s in live_s.items():
+                if s['until']<=day:continue
+                profile=seekers[sid]
+                pool,lower=pools[profile[3],profile[4]]
+                n=int(np.searchsorted(lower,profile[2],side='left'))
+                if not n:continue
+                chosen=[]
+                for _ in range(200):
+                    if len(chosen)>=min(config.referrals,n):break
+                    jid=pool[rng.randrange(n)]
+                    if jid in s['seen']:continue
+                    s['seen'].add(jid);chosen.append(jid)
+                for jid in chosen:
+                    add_introduction(sid,jid)
         rows=np.array(selected,dtype=DTYPE)
         chunks.append(rows)
         if len(rows):
