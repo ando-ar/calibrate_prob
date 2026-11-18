@@ -34,7 +34,7 @@ class MarketExportTest(unittest.TestCase):
         )
         cls.model_path = model_run / "legacy_models.json"
 
-    def test_three_formats_share_keys_and_keep_unknown_truth_null(self):
+    def test_three_formats_share_keys_and_truth_is_counterfactual(self):
         config = MarketConfig(days=16, seeker_arrivals=3, job_arrivals=4)
         for output_format in ("sqlite", "parquet", "csv"):
             write_market_dataset(config, self.root / output_format, market_start=MARKET_START,
@@ -47,10 +47,39 @@ class MarketExportTest(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT sum(referrals) FROM daily").fetchone()[0],
                              connection.execute("SELECT count(*) FROM events").fetchone()[0])
             rows = connection.execute("SELECT * FROM events ORDER BY shoukai_dt, event_id").fetchall()
-            unknown = connection.execute("SELECT failure_reason, latent_kettei_dt FROM truth").fetchall()
-            self.assertTrue(all(tuple(row) == (None, None) for row in unknown))
-            self.assertTrue(all(0 <= row["legacy_decision_score"] <= 1 for row in rows))
+            truth = connection.execute(
+                "SELECT * FROM truth ORDER BY event_id"
+            ).fetchall()
             self.assertGreater(len(rows), 0)
+            stages = ("application", "screening", "decision")
+            for row in truth:
+                for stage in stages:
+                    self.assertAlmostEqual(
+                        row[f"p_candidate_{stage}"] * row[f"p_employer_{stage}"],
+                        row[f"p_{stage}_eventual"], places=12,
+                    )
+                latent = [row[f"latent_{column}"] for column in ("oubo_dt", "shorui_tsuuka_dt", "kettei_dt")]
+                reached = [value is not None for value in latent]
+                # Counterfactual arrivals form a prefix: no stage is reached after a failure.
+                self.assertEqual(reached, sorted(reached, reverse=True))
+                if row["failure_stage"] is None:
+                    self.assertIsNone(row["failure_reason"])
+                    self.assertEqual(reached, [True, True, True])
+                else:
+                    self.assertIsNotNone(row["failure_reason"])
+                    if row["failure_stage"] == "application":
+                        self.assertEqual(row["failure_reason"], "not_applied")
+                    else:
+                        self.assertIn(row["failure_reason"], ("candidate_withdrawal", "employer_rejection"))
+                arrival = datetime.fromisoformat(rows[[r["event_id"] for r in rows].index(row["event_id"])]["shoukai_dt"])
+                previous = arrival
+                for value in latent:
+                    if value is not None:
+                        moment = datetime.fromisoformat(value)
+                        self.assertGreaterEqual(moment, previous)
+                        previous = moment
+            self.assertTrue(any(row["failure_stage"] == "application" for row in truth))
+            self.assertTrue(all(0 <= row["legacy_decision_score"] <= 1 for row in rows))
             first = datetime.fromisoformat(rows[0]["shoukai_dt"])
             self.assertEqual(first.utcoffset(), datetime.fromisoformat(MARKET_START).utcoffset())
             self.assertEqual((first.hour, first.minute, first.second), (0, 14, 24))

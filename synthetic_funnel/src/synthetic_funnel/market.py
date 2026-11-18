@@ -10,7 +10,18 @@ from .generator import Config
 from .mechanism import probability_arrays
 from .rates import population_rates
 
-DTYPE=np.dtype([(k,'i4') for k in ('seeker','job','day')]+[(k,'f8') for k in ('application','screening','decision','pa','ps','pd')]+[(k,'i2') for k in ('other_applications','competing_candidates')])
+LATENT_CANDIDATE_FIELDS=('p_candidate_application','p_candidate_screening','p_candidate_decision')
+LATENT_EMPLOYER_FIELDS=('p_employer_application','p_employer_screening','p_employer_decision')
+LATENT_DATE_FIELDS=('latent_oubo_dt','latent_shorui_tsuuka_dt','latent_kettei_dt')
+# Counterfactual failures only: the market's cancellation reasons never enter these columns.
+FAILURE_REASONS={1:'not_applied',2:'candidate_withdrawal',3:'employer_rejection'}
+# Stage-gate delays of the ordinary funnel; the counterfactual resamples them
+# ignoring exits, posting expiry and cancellations.
+LATENT_STAGE_DELAYS=((3.,2.),(5.,4.),(30.,20.))
+LATENT_STREAM=0x6C6174656E74  # b'latent'; seeds the counterfactual stream apart from the market stream
+DTYPE=np.dtype([(k,'i4') for k in ('seeker','job','day')]+[(k,'f8') for k in ('application','screening','decision','pa','ps','pd')]+[(k,'i2') for k in ('other_applications','competing_candidates')]
+               +[(k,'f8') for k in (*LATENT_CANDIDATE_FIELDS,*LATENT_EMPLOYER_FIELDS,*LATENT_DATE_FIELDS)]
+               +[('failure_stage','i2'),('failure_reason','i2')])
 INTRODUCTION_OFFSET_DAYS = 0.01
 
 
@@ -45,6 +56,40 @@ def features(rows,seekers,jobs):
     return f
 
 
+def counterfactual(rows,day,rng):
+    """Fill counterfactual latent arrivals, failure stage and reason per referral.
+
+    Records where the funnel would reach if the market kept mediating after the
+    referral: exits, posting expiry and cancellations never interrupt it. Every
+    draw comes only from the dedicated stream, so the market stream, replay and
+    observed dates are untouched.
+    """
+    current=np.full(len(rows),day+INTRODUCTION_OFFSET_DAYS)
+    stage=np.zeros(len(rows),dtype=np.int64)
+    reason=np.zeros(len(rows),dtype=np.int64)
+    for i in range(3):
+        pending=np.flatnonzero(stage==0)
+        if not len(pending):break
+        employer=rng.random(len(pending))<rows[LATENT_EMPLOYER_FIELDS[i]][pending]
+        candidate=rng.random(len(pending))<rows[LATENT_CANDIDATE_FIELDS[i]][pending]
+        stop=~(employer&candidate)
+        stopped=pending[stop]
+        stage[stopped]=i+1
+        reason[stopped]=np.where(employer[stop],1 if i==0 else 2,3)
+        moved=pending[~stop]
+        if len(moved):
+            mean,std=LATENT_STAGE_DELAYS[i]
+            days=rng.normal(mean,std,len(moved))
+            retry=days<0
+            while retry.any():
+                days[retry]=rng.normal(mean,std,int(retry.sum()))
+                retry=days<0
+            current[moved]+=days
+            rows[LATENT_DATE_FIELDS[i]][moved]=current[moved]
+    rows['failure_stage']=stage
+    rows['failure_reason']=reason
+
+
 def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_index=None,
              branch_seed=None, retain='all', daily_stats=None):
     """Simulate the same market; optionally retain only observed applications.
@@ -59,6 +104,8 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     if resume is not None and retain!='all':
         raise ValueError('Future branches require retain=all')
     rng=random.Random(config.seed if branch_seed is None else branch_seed)
+    latent_rng=np.random.default_rng(np.random.SeedSequence(
+        [config.seed if branch_seed is None else branch_seed,LATENT_STREAM]))
     seekers=[] if resume is None else copy.deepcopy(resume['seekers'])
     jobs=[] if resume is None else copy.deepcopy(resume['jobs'])
     # Immutable profile tables avoid converting the entire growing history daily.
@@ -186,15 +233,19 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             for jid in chosen:
                 other=sum(cases[e][-1]>=1 for e in s['pending'] if e in cases)
                 rivals=sum(cases[e][-1]>=1 for e in live_j[jid]['pending'] if e in cases)
-                selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals))
+                selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals,
+                                 0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0))
         rows=np.array(selected,dtype=DTYPE)
         chunks.append(rows)
         if len(rows):
             sa=seeker_table[:len(seekers)] if seeker_table is not None else np.asarray(seekers)
             ja=job_table[:len(jobs)] if job_table is not None else np.asarray(jobs)
             f=features(rows,sa,ja)
-            p=np.prod(probability_arrays(base,f,sa[rows['seeker'],6],ja[rows['job'],6],anchors),axis=-1)
-            rows['pa'],rows['ps'],rows['pd']=p.T
+            gates=probability_arrays(base,f,sa[rows['seeker'],6],ja[rows['job'],6],anchors)
+            rows['pa'],rows['ps'],rows['pd']=gates.prod(axis=-1).T
+            rows['p_candidate_application'],rows['p_candidate_screening'],rows['p_candidate_decision']=gates[:,:,0].T
+            rows['p_employer_application'],rows['p_employer_screening'],rows['p_employer_decision']=gates[:,:,1].T
+            counterfactual(rows,day,latent_rng)
             for offset,row in enumerate(rows):
                 if rng.random()>=row['pa']:continue
                 sid,jid=int(row['seeker']),int(row['job']);eid=next_e;next_e+=1
