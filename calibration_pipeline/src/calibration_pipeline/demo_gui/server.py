@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import mimetypes
 import shutil
 import sys
 import uuid
@@ -15,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 import polars as pl
 
+from calibration_pipeline.demo_gui.fixture import fixture_error, inspect_fixture
 from calibration_pipeline.demo_gui.runner import (
     CommandResult,
     Runner,
@@ -38,6 +40,10 @@ class DemoState:
     @property
     def examples(self) -> Path:
         return self.base / "examples" / "sqlite"
+
+    @property
+    def fixture(self) -> Path:
+        return (self.examples / "train" / "sqlite_fixture.db").resolve()
 
     @property
     def experiments_dir(self) -> Path:
@@ -99,7 +105,6 @@ def default_values(state: DemoState) -> dict[str, str]:
         "seed": str(DEFAULT_SQL_SEED),
         "train_config": read_optional(state.examples / "train" / "config.toml"),
         "train_sql": read_optional(state.examples / "train" / "train.sql"),
-        "fixture_path": str(state.examples / "train" / "sqlite_fixture.db"),
         "inference_config": read_optional(state.examples / "inference" / "config.toml"),
         "inference_sql": read_optional(state.examples / "inference" / "inference.sql"),
         "original_score": str(state.examples / "inference" / "original_score.csv"),
@@ -218,7 +223,7 @@ def stage_inputs(staging_dir: Path, files: dict[str, str]) -> dict[str, Path]:
 
 
 def _write_file(path: Path, text: str) -> Path:
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="\n")
     return path
 
 
@@ -232,9 +237,9 @@ def run_train(state: DemoState, form: dict[str, str]) -> StepResult:
         return StepResult("学習", "（実行せずに中断）", CommandResult([], 2, "", message))
     if error:
         return StepResult("学習", "（実行せずに中断）", CommandResult([], 2, "", error))
-    fixture = form.get("fixture_path", "").strip()
-    if fixture and not Path(fixture).is_file():
-        message = f"sqlite fixture が見つかりません: {fixture}"
+    fixture = str(state.fixture)
+    message = fixture_error(state.fixture)
+    if message:
         return StepResult("学習", "（実行せずに中断）", CommandResult([], 2, "", message))
     staging = state.base / ".demo_staging" / uuid.uuid4().hex
     staged = stage_inputs(staging, {
@@ -246,8 +251,7 @@ def run_train(state: DemoState, form: dict[str, str]) -> StepResult:
         "--config", str(staged["config.toml"]), "--sql", str(staged["train.sql"]),
         "--sqlite", "--seed", str(seed),
     ]
-    if fixture:
-        argv += ["--sqlite-fixture", fixture]
+    argv += ["--sqlite-fixture", fixture]
     try:
         result = state.runner(cli_command(argv))
         detail = ""
@@ -275,9 +279,9 @@ def run_inference(state: DemoState, form: dict[str, str]) -> StepResult:
     if not Path(original).is_file():
         message = f"元スコアファイルが見つかりません: {original}"
         return StepResult("推論", "（実行せずに中断）", CommandResult([], 2, "", message))
-    fixture = form.get("fixture_path", "").strip()
-    if fixture and not Path(fixture).is_file():
-        message = f"sqlite fixture が見つかりません: {fixture}"
+    fixture = str(state.fixture)
+    message = fixture_error(state.fixture)
+    if message:
         return StepResult("推論", "（実行せずに中断）", CommandResult([], 2, "", message))
     if "/" in train_run:
         name, train_run = train_run.split("/", 1)
@@ -291,8 +295,7 @@ def run_inference(state: DemoState, form: dict[str, str]) -> StepResult:
         "--config", str(staged["config.toml"]), "--sql", str(staged["inference.sql"]),
         "--original-score", original, "--sqlite", "--seed", str(seed),
     ]
-    if fixture:
-        argv += ["--sqlite-fixture", fixture]
+    argv += ["--sqlite-fixture", fixture]
     if train_run != "latest":
         argv += ["--train-run", train_run]
     try:
@@ -317,7 +320,7 @@ def run_prepare(state: DemoState) -> StepResult:
     result = state.runner([sys.executable, str(script)])
     note = ""
     if result.returncode == 0:
-        note = "<p>examples/sqlite/ のfixtureと候補CSVを再生成しました。フォームを再読み込みすると内容が更新されます。</p>"
+        note = "<p>examples/sqlite/ のfixtureと候補CSVを再生成しました。上の「固定fixture DBの内容確認」で生成したデータを確認し、学習へ進んでください。</p>"
     return StepResult("デモデータ再生成", f"{sys.executable} {script}", result, note)
 
 
@@ -328,6 +331,20 @@ def build_handler(state: DemoState, template: Template) -> type[BaseHTTPRequestH
         """Serve the demo page and run pipeline steps on POST."""
 
         def do_GET(self) -> None:
+            request_path = urlparse(self.path).path
+            if request_path.startswith("/docs/"):
+                root = (state.base / "docs" / "html").resolve()
+                path = (root / request_path.removeprefix("/docs/")).resolve()
+                if not path.is_relative_to(root) or not path.is_file():
+                    self.respond("<p>利用ガイドが見つかりません。calibration_pipeline/ で uv run --locked --group docs python dev/build_docs.py を実行してください。</p>", 404)
+                    return
+                payload = path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
             query = parse_qs(urlparse(self.path).query)
             tab = query.get("tab", ["train"])[0]
             if tab not in ("train", "inference"):
@@ -372,7 +389,7 @@ def build_handler(state: DemoState, template: Template) -> type[BaseHTTPRequestH
 
 
 FORM_KEYS = (
-    "model_name", "seed", "train_config", "train_sql", "fixture_path",
+    "model_name", "seed", "train_config", "train_sql",
     "inference_config", "inference_sql", "original_score", "train_run",
 )
 
@@ -417,7 +434,7 @@ def render_train_form(state: DemoState, values: dict[str, str]) -> str:
         + field_text("seed", "seed", values["seed"], str(DEFAULT_SQL_SEED), "number")
         + field_textarea("train_config", "学習config.toml", values["train_config"], 8)
         + field_textarea("train_sql", "train.sql（row_role=train/calibrate/validation を返す）", values["train_sql"], 16)
-        + field_text("fixture_path", "sqlite fixture（空欄ならfixtureなしのメモリDB）", values["fixture_path"])
+        + f"<p>使用DB（固定）: <code>{html.escape(str(state.fixture))}</code> — 上の内容確認と同じDBを使用します。</p>"
     )
 
 
@@ -429,7 +446,7 @@ def render_inference_form(state: DemoState, values: dict[str, str]) -> str:
         + field_textarea("inference_config", "推論config.toml（空またはコメントのみ）", values["inference_config"], 4)
         + field_textarea("inference_sql", "inference.sql（calibration_candidates を参照）", values["inference_sql"], 12)
         + field_text("original_score", "元スコアファイル（CSVまたはParquet）", values["original_score"])
-        + field_text("fixture_path", "sqlite fixture（空欄ならfixtureなしのメモリDB）", values["fixture_path"])
+        + f"<p>使用DB（固定）: <code>{html.escape(str(state.fixture))}</code> — 上の内容確認と同じDBを使用します。</p>"
         + f'<label class="field"><span>使用する学習run</span>'
         f'<select name="train_run">{train_run_options(state, values.get("train_run", "latest"))}</select></label>'
     )
@@ -450,6 +467,8 @@ def render_page(
     train_html = render_train_form(state, values)
     inference_html = render_inference_form(state, values)
     return template.substitute(
+        fixture_path=html.escape(str(state.fixture)),
+        fixture_preview=inspect_fixture(state.fixture),
         nav=(
             f'<a href="/?tab=train" class="{"active" if tab == "train" else "inactive"}">学習</a>'
             f'<a href="/?tab=inference" class="{"active" if tab == "inference" else "inactive"}">推論</a>'

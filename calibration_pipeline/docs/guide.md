@@ -32,6 +32,17 @@ SQLite用の抽出例です。
 {py:func}`calibration_pipeline.evaluation.metrics` を参照してください。
 検証データで校正前後のECE・Brier score・ビンごとの確率と実績率を計算し、JSONとSVGに保存します。
 
+保存されるSVGは、横軸にビンごとの平均予測確率、縦軸に実績率を取り、
+Isotonic適用前後の2系列を対角線（理想的な校正）と並べて示します。
+例の合成データで学習したrunのプロットが次の通りです。
+
+```{figure} _static/calibration_plot_example.svg
+:alt: 検証データでの校正プロット。横軸が平均予測確率、縦軸が実績率で、Before isotonic と After isotonic の2系列を対角線と並べて示す。
+:width: 480px
+
+例のrun（`sqlite_oubo_demo`）で保存された校正プロット。点が対角線に近いほど校正されている。
+```
+
 ## 推論
 
 候補はUTF-8 CSVまたはParquetで、1行1候補です。元スコア、`user_id`、`item_id`、
