@@ -19,9 +19,11 @@ uv run --locked calibration-pipeline inference --model-name sqlite_oubo_demo --s
 - [inference/config.toml](inference/config.toml) と [inference/inference.sql](inference/inference.sql)
 - [パイプラインの仕様とRedshiftでの実行方法](../../README.md)
 
-## DBの再生成と保存対象
+## fixtureの取得と保存対象
 
-DBはGitに含めません。`calibration_pipeline/` で以下を実行すると `examples/sqlite/train/sqlite_fixture.db` を生成します。合成候補CSVとmanifestも再生成します。
+DBはGitに含めません。fixture一式はGitHub Actionsの [Fixture](https://github.com/ando-ar/calibrate_prob/actions/workflows/fixture.yml) の成功した実行から、`calibration-pipeline-fixture` artifact（保持期間14日）をダウンロードします。ZIPを `calibration_pipeline/examples/sqlite/` に展開すると、`train/sqlite_fixture.db`、`train/synthetic_data_manifest.json`、`inference/original_score.csv` がこのページのパスに配置されます。展開後はそのまま学習・推論・GUIを実行できます。保持期間を過ぎたartifactは取得できないため、ローカルで再生成してください。
+
+ローカルで再生成する場合は `calibration_pipeline/` で以下を実行します。合成候補CSVとmanifestも再生成します。
 
 ```powershell
 uv sync --locked

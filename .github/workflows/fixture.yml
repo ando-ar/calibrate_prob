@@ -1,0 +1,46 @@
+name: Fixture
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-fixture:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: calibration_pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.30"
+          enable-cache: true
+          cache-dependency-glob: calibration_pipeline/uv.lock
+      - run: uv sync --locked --python 3.12
+      - name: Generate SQLite fixture and candidate CSV
+        run: uv run --locked python examples/sqlite/prepare_example.py
+      - name: Verify generated files
+        run: |
+          test -s examples/sqlite/train/sqlite_fixture.db
+          test -s examples/sqlite/train/synthetic_data_manifest.json
+          test -s examples/sqlite/inference/original_score.csv
+          uv run --locked python - <<'PY'
+          import sqlite3
+
+          connection = sqlite3.connect("examples/sqlite/train/sqlite_fixture.db")
+          print(connection.execute("PRAGMA integrity_check").fetchone()[0])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: calibration-pipeline-fixture
+          path: |
+            calibration_pipeline/examples/sqlite/train/sqlite_fixture.db
+            calibration_pipeline/examples/sqlite/train/synthetic_data_manifest.json
+            calibration_pipeline/examples/sqlite/inference/original_score.csv
+          if-no-files-found: error
+          retention-days: 14

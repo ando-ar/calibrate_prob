@@ -103,7 +103,7 @@ CatBoostはCPUで200反復、木の深さ4、1スレッドで学習します。�
 
 評価には件数、検証の実績率、ECE、Brier score、ビンごとの予測平均と実績率を使います。プロットの横軸は平均予測確率、縦軸は実績率です。学習・校正に使った紹介済み履歴と全候補で分布が異なる場合は、検証値の適用範囲に注意してください。
 
-校正モデルの読み込みには、同じ依存関係と信頼できるexperimentの保存物を使ってください。実験の入力と出力は原則Gitの対象外です。合成データの `experiments/example_oubo/` とSQLite実行例のCSVは保存します。DBとモデルは除外します。DBの再生成方法は [SQLiteの実行例](examples/sqlite/README.md) を参照してください。
+校正モデルの読み込みには、同じ依存関係と信頼できるexperimentの保存物を使ってください。実験の入力と出力は原則Gitの対象外です。合成データの `experiments/example_oubo/` とSQLite実行例のCSVは保存します。DBとモデルは除外します。DBの再生成方法とActions artifactからの取得方法は [SQLiteの実行例](examples/sqlite/README.md) を参照してください。
 
 ## demo GUI
 
