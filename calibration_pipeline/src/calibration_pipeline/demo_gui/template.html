@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>calibration pipeline demo</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: "Yu Gothic UI", Meiryo, system-ui, sans-serif; margin: 0 auto; padding: 0 16px 48px; max-width: 960px; color: #222; background: #fafafa; }
+  header { border-bottom: 2px solid #2c5aa8; padding: 16px 0 8px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; color: #2c5aa8; }
+  header p { margin: 0; font-size: 0.85rem; color: #555; }
+  nav { margin: 16px 0; display: flex; gap: 8px; }
+  nav a { padding: 8px 24px; border-radius: 8px 8px 0 0; text-decoration: none; font-weight: bold; border: 1px solid #ccc; border-bottom: none; background: #eee; color: #555; }
+  nav a.active { background: #2c5aa8; color: #fff; }
+  section.tab.hidden { display: none; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 1.1rem; margin: 0 0 8px; color: #2c5aa8; }
+  .banner { background: #ffe9c8; border: 1px solid #e0a040; border-radius: 6px; padding: 8px 12px; }
+  .banner:empty { display: none; }
+  .field { display: block; margin: 10px 0; }
+  .field span { display: block; font-size: 0.8rem; color: #555; margin-bottom: 2px; }
+  .field input, .field select { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
+  .field textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: 0.85rem/1.4 Consolas, monospace; white-space: pre; }
+  button { background: #2c5aa8; color: #fff; border: none; border-radius: 6px; padding: 10px 28px; font: inherit; font-weight: bold; cursor: pointer; margin-top: 8px; }
+  button:hover { background: #1d4488; }
+  .explain { background: #eef3fb; border-color: #b9cbe8; }
+  .explain table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin-top: 8px; }
+  .explain th, .explain td { border: 1px solid #b9cbe8; padding: 4px 8px; text-align: left; vertical-align: top; }
+  .explain th { background: #dde7f5; }
+  .explain code, .result code { background: #eee; padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+  .result { border-color: #2c5aa8; }
+  .result pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 8px; overflow-x: auto; font: 0.8rem/1.4 Consolas, monospace; max-height: 320px; }
+  .result p.status { font-weight: bold; margin: 4px 0; }
+  .result p.status.ok { color: #1a7a2e; }
+  .result p.status.fail { color: #b02020; }
+  .result svg { max-width: 100%; height: auto; background: #fff; border: 1px solid #ddd; }
+  .table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid #ddd; }
+  .result table { border-collapse: collapse; font-size: 0.8rem; white-space: nowrap; }
+  .result th, .result td { border: 1px solid #ddd; padding: 3px 8px; }
+  .result th { background: #eef3fb; position: sticky; top: 0; }
+  details summary { cursor: pointer; font-size: 0.85rem; color: #2c5aa8; margin: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>calibration pipeline demo</h1>
+  <p>紹介候補スコアの確率校正を試すデモです。ボタンを押すと本物のCLI（python -m calibration_pipeline.cli）が別プロセスで動き、完了まで待ちます。生成物は <code>experiments/demo_gui/</code> に保存されます。</p>
+</header>
+<nav>${nav}</nav>
+<p class="banner">${banner}</p>
+
+<section id="train" class="tab ${train_tab_class}">
+  <div class="card explain">
+    <h2>学習で何が起きるか</h2>
+    <table>
+      <tr><th>入力</th><td>experiment名、学習config.toml（対象スコア・ラベル・確率列・特徴量・bins）、train.sql（row_role=train / calibrate / validation の3区分を1表で返す）、seed、sqlite fixture（任意）</td></tr>
+      <tr><th>実行</th><td><code>python -m calibration_pipeline.cli train --model-name ... --sqlite ...</code></td></tr>
+      <tr><th>出力</th><td><code>experiments/demo_gui/&lt;model&gt;/train/&lt;run_id&gt;/output/</code> に <code>calibration_model.pkl</code>、<code>calibration_metrics.json</code>（件数・実績率・ECE・Brier・ビン毎の予測平均と実績率）、<code>calibration_plot.svg</code>。train区分でCatBoostを学び、calibrate区分の出力にIsotonic Regressionを当て、validation区分で比較します。</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>学習を実行</h2>
+    <form method="post" action="/">
+      <input type="hidden" name="action" value="train">
+      ${train_form}
+      <button type="submit">学習を実行する</button>
+    </form>
+  </div>
+  ${train_result}
+</section>
+
+<section id="inference" class="tab ${inference_tab_class}">
+  <div class="card explain">
+    <h2>推論で何が起きるか</h2>
+    <table>
+      <tr><th>入力</th><td>experiment名、使用する学習run（最新または選択）、inference.sql（一時テーブル <code>calibration_candidates</code> から candidate_row_id・元スコア・特徴量を返す）、元スコアCSV（1行1候補）、seed、sqlite fixture（任意）</td></tr>
+      <tr><th>実行</th><td><code>python -m calibration_pipeline.cli inference --model-name ... --sqlite ...</code></td></tr>
+      <tr><th>出力</th><td><code>experiments/demo_gui/&lt;model&gt;/inference/&lt;run_id&gt;/output/</code> に <code>calibrated_score.csv</code>（入力と同じ形式・行順で、末尾に予測確率列）。推論の列契約は学習済みモデルから読み込まれるため、推論configは空またはコメントのみです。</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>推論を実行</h2>
+    <form method="post" action="/">
+      <input type="hidden" name="action" value="inference">
+      ${inference_form}
+      <button type="submit">推論を実行する</button>
+    </form>
+  </div>
+  ${inference_result}
+</section>
+
+<section class="card">
+  <h2>デモデータの再生成</h2>
+  <p>fixture DBや候補CSVが無い場合・作り直したい場合に、examples/sqlite/prepare_example.py を実行して <code>examples/sqlite/</code> のデータを再生成します。</p>
+  <form method="post" action="/">
+    <input type="hidden" name="action" value="prepare">
+    <button type="submit">fixtureを再生成する</button>
+  </form>
+  ${prepare_result}
+</section>
+
+<script>${sync_script}</script>
+</body>
+</html>
