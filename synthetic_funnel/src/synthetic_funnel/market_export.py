@@ -27,6 +27,7 @@ from .market import (
     features,
     simulate,
 )
+from .market_training import score_warmup_referrals
 
 USER_TABLE = Table(
     "user", ("user_id", "arrival_dt", "user_skill", "desired_salary", "occupation", "region",
@@ -116,7 +117,8 @@ def _profile_records(table, profiles, start, make_id):
         ), strict=True))
 
 
-def _event_records(rows, seekers, jobs, start, bundle, progress):
+def _event_records(rows, seekers, jobs, start, bundle, scores, progress):
+    """Yield event/events_latent pairs scored with legacy or in-market warmup scores."""
     from .trained_scores import predict_scores
 
     application_base, screening_base, _ = Config().base_probabilities
@@ -130,27 +132,36 @@ def _event_records(rows, seekers, jobs, start, bundle, progress):
         for event in scored:
             for field in ("wants_remote", "allows_remote", "remote_mismatch"):
                 event[field] = int(event[field])
-        try:
-            with np.errstate(over="raise", invalid="raise", divide="raise"):
-                scores = predict_scores(scored, bundle)
-        except FloatingPointError as exc:
-            raise ValueError("legacy_models produced invalid market scores") from exc
-        if not np.isfinite(scores).all():
-            raise ValueError("legacy_models produced invalid market scores")
-        for local, (row, score) in enumerate(zip(batch, scores.tolist(), strict=True)):
+        if bundle is None:
+            batch_scores = [None] * len(batch)
+        else:
+            try:
+                with np.errstate(over="raise", invalid="raise", divide="raise"):
+                    predicted = predict_scores(scored, bundle)
+            except FloatingPointError as exc:
+                raise ValueError("legacy_models produced invalid market scores") from exc
+            if not np.isfinite(predicted).all():
+                raise ValueError("legacy_models produced invalid market scores")
+            batch_scores = predicted.tolist()
+        for index, row in enumerate(batch):
             seeker, job, day = (int(row[key]) for key in ("seeker", "job", "day"))
             event_id = f"market-{seeker:09d}-{job:04d}"
             # Immutable attributes live in the user/item masters, not in events.
             event = {"event_id": event_id, "user_id": _user_id(seeker), "item_id": _item_id(job)}
             for field in ("skill_match", "skill_shortfall", "overqualification", "salary_shortfall"):
-                event[field] = float(observed[field][local])
+                event[field] = float(observed[field][index])
             for field in ("remote_mismatch", "other_applications", "competing_candidates"):
-                event[field] = int(observed[field][local])
-            event.update(zip(MODEL_SCORE_FIELDS, score, strict=True))
+                event[field] = int(observed[field][index])
             event["shoukai_dt"] = _datetime_at(start, day + INTRODUCTION_OFFSET_DAYS)
             for field, stage in zip(DATE_COLUMNS, STAGES, strict=True):
                 value = float(row[stage])
                 event[field] = _datetime_at(start, value) if math.isfinite(value) else None
+            if bundle is None:
+                event.update(zip(MODEL_SCORE_FIELDS,
+                                 (float(value) if math.isfinite(value) else None
+                                  for value in scores[offset + index]), strict=True))
+            else:
+                event.update(zip(MODEL_SCORE_FIELDS, batch_scores[index], strict=True))
 
             pa, ps, pd = (float(row[key]) for key in ("pa", "ps", "pd"))
             truth = dict.fromkeys(EVENTS_LATENT_TABLE.fields)
@@ -179,18 +190,31 @@ def write_market_dataset(
     output: str | Path,
     *,
     market_start: str,
-    legacy_models: str | Path,
+    legacy_models: str | Path | None = None,
     output_format: str = "sqlite",
     retain: str = "all",
     progress: Callable[[int], None] | None = None,
 ):
-    """Simulate a market and publish its data scored with a saved ordinary funnel model bundle."""
+    """Simulate a market and publish it with legacy or in-market warmup scores."""
     start = parse_datetime(market_start)
     end = _datetime_at(start, config.days)
-    bundle, model_source = _load_models(Path(legacy_models), start)
+    scores = None
+    if legacy_models is not None:
+        bundle, model_source = _load_models(Path(legacy_models), start)
+        score_metadata = {"legacy_models": {"method": bundle["method"], **model_source}}
+    else:
+        bundle = None
+        score_metadata = {}
     with dataset_staging(output, output_format) as staging:
         daily: list[tuple[int, int, int, int, int, int, int, int, int]] = []
         rows, seekers, jobs = simulate(config, retain=retain, daily_stats=daily)
+        if bundle is None:
+            scores, training_info = score_warmup_referrals(rows, seekers, jobs, config, start)
+            score_metadata = {
+                "training": training_info,
+                "training_cutoff": training_info["training_cutoff"],
+                "warmup_end": training_info["warmup_end"],
+            }
         extra_tables = (
             (USER_TABLE, _profile_records(USER_TABLE, seekers, start, _user_id)),
             (ITEM_TABLE, _profile_records(ITEM_TABLE, jobs, start, _item_id)),
@@ -201,14 +225,16 @@ def write_market_dataset(
                                applications, screenings, decisions in daily)),
         )
         files = write_rows(staging, output_format, (EVENTS_TABLE, EVENTS_LATENT_TABLE),
-                           _event_records(rows, seekers, jobs, start, bundle, progress), extra_tables=extra_tables)
+                           _event_records(rows, seekers, jobs, start, bundle, scores, progress),
+                           extra_tables=extra_tables)
         manifest = {
             "generator": "synthetic-funnel", "version": VERSION, "mode": "market", "output_format": output_format,
-            "config": asdict(config), "market_start": start.isoformat(), "observation_end_exclusive": end,
+            "config": json.loads(json.dumps(asdict(config))), "market_start": start.isoformat(),
+            "observation_end_exclusive": end,
             "retention": retain,
             "row_counts": {"events": len(rows), "events_latent": len(rows), "user": len(seekers),
                            "item": len(jobs), "daily": len(daily)},
-            "legacy_models": {"method": bundle["method"], **model_source},
+            **score_metadata,
             "probability_scope": "Conditional on the previous phase, evaluated at introduction before future exits "
                                  "or posting expiry; observed dates reflect both market exits and the observation end.",
             "truth_scope": "Counterfactual: one-sided probabilities, latent arrival dates and failure stage/reason "

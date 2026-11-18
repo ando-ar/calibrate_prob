@@ -34,12 +34,14 @@ def main():
             market_start = values.pop("market_start", None)
             legacy_models = values.pop("legacy_models", None)
             retain = values.pop("retain", "all")
-            if not isinstance(market_start, str) or not isinstance(legacy_models, str) or not legacy_models:
-                raise ValueError("Market config requires market_start and legacy_models as strings")
+            if not isinstance(market_start, str) or not market_start:
+                raise ValueError("Market config requires market_start as a string")
+            if legacy_models is not None and (not isinstance(legacy_models, str) or not legacy_models):
+                raise ValueError("legacy_models must be a nonempty string path when provided")
             manifest = write_market_dataset(
                 MarketConfig(**values), output, market_start=market_start,
-                legacy_models=config_path.parent / legacy_models, output_format=args.format, retain=retain,
-                progress=progress,
+                legacy_models=None if legacy_models is None else config_path.parent / legacy_models,
+                output_format=args.format, retain=retain, progress=progress,
             )
             row_count = manifest["row_counts"]["events"]
         else:
