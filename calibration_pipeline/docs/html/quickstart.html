@@ -46,7 +46,8 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">クイックスタート</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#sqlite">SQLiteで学習と推論を試す</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#demo-gui">demo GUIで学習と推論を試す</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sqlitecli">SQLiteでCLIから学習と推論を試す</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#redshift">Redshiftで実行する</a></li>
 </ul>
 </li>
@@ -80,10 +81,43 @@
              
   <section id="id1">
 <h1>クイックスタート<a class="headerlink" href="#id1" title="Link to this heading"></a></h1>
-<section id="sqlite">
-<h2>SQLiteで学習と推論を試す<a class="headerlink" href="#sqlite" title="Link to this heading"></a></h2>
+<section id="demo-gui">
+<h2>demo GUIで学習と推論を試す<a class="headerlink" href="#demo-gui" title="Link to this heading"></a></h2>
 <p>Python 3.11以上とuvを使います。リポジトリを取得し、<code class="docutils literal notranslate"><span class="pre">calibration_pipeline/</span></code> で実行してください。
-fixture生成には、同じリポジトリの <code class="docutils literal notranslate"><span class="pre">../synthetic_funnel/</span></code> が必要です。</p>
+依存関係の追加はありません。</p>
+<div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">sync</span> <span class="p">-</span><span class="n">-locked</span>
+<span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="n">python</span> <span class="n">-m</span> <span class="n">calibration_pipeline</span><span class="p">.</span><span class="n">demo_gui</span>
+</pre></div>
+</div>
+<p>ブラウザが開きます（既定は <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8000/</span></code>）。学習タブと推論タブを切り替えられます。
+フォームはSQLite実行例で事前入力されています。初回は「fixtureを再生成する」ボタンで
+<code class="docutils literal notranslate"><span class="pre">examples/sqlite/</span></code> のデモデータを作り、そのまま「学習を実行する」を押します。
+その後、推論タブで「推論を実行する」を押すと、最新の学習runで候補の確率を計算します。</p>
+<p>ボタンを押すと本物のCLI（<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">calibration_pipeline.cli</span></code>）が別プロセスで同期実行され、
+完了後に同じページへ次の内容が表示されます。</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>タブ</p></th>
+<th class="head"><p>表示内容</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>学習</p></td>
+<td><p>状態とCLI出力、<code class="docutils literal notranslate"><span class="pre">calibration_metrics.json</span></code>（件数・実績率・ECE・Brier・ビン毎）、<code class="docutils literal notranslate"><span class="pre">calibration_plot.svg</span></code>、runディレクトリ</p></td>
+</tr>
+<tr class="row-odd"><td><p>推論</p></td>
+<td><p>状態とCLI出力、使用した学習run、<code class="docutils literal notranslate"><span class="pre">calibrated_score</span></code> の候補ごとの表</p></td>
+</tr>
+</tbody>
+</table>
+<p>学習と推論のフォームはexperiment名（model name）・seed・config・SQL・入力ファイルを上書きできます。
+推論では、使用する学習runを「最新」または過去の成功runから選べます（<code class="docutils literal notranslate"><span class="pre">--train-run</span></code> に相当します）。
+生成物は <code class="docutils literal notranslate"><span class="pre">experiments/demo_gui/&lt;model_name&gt;/...</span></code> に保存され、Gitの対象外です。
+入力が不正な場合はCLIのエラーメッセージがそのまま表示されます。</p>
+</section>
+<section id="sqlitecli">
+<h2>SQLiteでCLIから学習と推論を試す<a class="headerlink" href="#sqlitecli" title="Link to this heading"></a></h2>
+<p>demo GUIと同じ流れをコマンドで実行します。fixture生成には、同じリポジトリの <code class="docutils literal notranslate"><span class="pre">../synthetic_funnel/</span></code> が必要です。</p>
 <div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">sync</span> <span class="p">-</span><span class="n">-locked</span>
 <span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="n">python</span> <span class="n">examples</span><span class="p">/</span><span class="n">sqlite</span><span class="p">/</span><span class="n">prepare_example</span><span class="p">.</span><span class="n">py</span>
 <span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="n">calibration-pipeline</span> <span class="n">train</span> <span class="p">-</span><span class="n">-model-name</span> <span class="n">sqlite_oubo_demo</span> <span class="p">-</span><span class="n">-sqlite</span> <span class="p">-</span><span class="n">-sqlite-fixture</span> <span class="n">examples</span><span class="p">/</span><span class="n">sqlite</span><span class="p">/</span><span class="n">train</span><span class="p">/</span><span class="n">sqlite_fixture</span><span class="p">.</span><span class="n">db</span> <span class="p">-</span><span class="n">-config</span> <span class="n">examples</span><span class="p">/</span><span class="n">sqlite</span><span class="p">/</span><span class="n">train</span><span class="p">/</span><span class="n">config</span><span class="p">.</span><span class="n">toml</span> <span class="p">-</span><span class="n">-sql</span> <span class="n">examples</span><span class="p">/</span><span class="n">sqlite</span><span class="p">/</span><span class="n">train</span><span class="p">/</span><span class="n">train</span><span class="p">.</span><span class="n">sql</span>
