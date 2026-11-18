@@ -1,10 +1,15 @@
--- Adapt the generator's offset-bearing timestamps to the example's local calendar.
+-- Adapt the market's prefixed IDs and offset-bearing timestamps to the example's local calendar.
+-- Attributes are immutable in the user/item masters, so they are joined here instead of events.
 CREATE VIEW scored_referrals AS
-SELECT 10000000 + CAST(substr(user_id, length('user-') + 1) AS INTEGER) AS user_id,
-       20000000 + CAST(substr(item_id, length('item-') + 1) AS INTEGER) AS item_id,
-       replace(substr(shoukai_dt, 1, 19), 'T', ' ') AS shoukai_dt,
-       legacy_apply_score AS oubo_score, replace(substr(oubo_dt, 1, 19), 'T', ' ') AS oubo_dt, seeker_skill
-FROM events;
+SELECT 10000000 + CAST(substr(e.user_id, length('user-') + 1) AS INTEGER) AS user_id,
+       20000000 + CAST(substr(e.item_id, length('item-') + 1) AS INTEGER) AS item_id,
+       replace(substr(e.shoukai_dt, 1, 19), 'T', ' ') AS shoukai_dt,
+       e.model_apply_score,
+       replace(substr(e.oubo_dt, 1, 19), 'T', ' ') AS oubo_dt,
+       u.user_skill AS seeker_skill,
+       u.occupation AS occupation
+FROM events AS e
+JOIN user AS u ON u.user_id = e.user_id;
 
 CREATE TABLE user_feature_daily (
     user_id INTEGER NOT NULL,
@@ -14,11 +19,9 @@ CREATE TABLE user_feature_daily (
     PRIMARY KEY (user_id, snapshot_date)
 );
 
--- Synthetic user attribute. Some users have no occupation to exercise NULL handling.
+-- A user can receive several referrals on one day; their master attributes do not change.
+-- Some users have no occupation to exercise NULL handling.
 INSERT INTO user_feature_daily
-SELECT user_id, date(shoukai_dt), seeker_skill,
-       CASE WHEN user_id % 7 = 0 THEN NULL
-            WHEN user_id % 3 = 0 THEN 'engineering'
-            WHEN user_id % 3 = 1 THEN 'sales'
-            ELSE 'office' END
+SELECT DISTINCT user_id, date(shoukai_dt), seeker_skill,
+       CASE WHEN (user_id - 10000000) % 7 = 0 THEN NULL ELSE CAST(occupation AS TEXT) END
 FROM scored_referrals;
