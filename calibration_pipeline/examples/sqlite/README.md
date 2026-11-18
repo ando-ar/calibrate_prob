@@ -18,3 +18,14 @@ uv run --locked calibration-pipeline inference --model-name sqlite_oubo_demo --s
 - [train/config.toml](train/config.toml) と [train/train.sql](train/train.sql)
 - [inference/config.toml](inference/config.toml) と [inference/inference.sql](inference/inference.sql)
 - [パイプラインの仕様とRedshiftでの実行方法](../../README.md)
+
+## DBの再生成と保存対象
+
+DBはGitに含めません。`calibration_pipeline/` で以下を実行すると `examples/sqlite/train/sqlite_fixture.db` を生成します。合成候補CSVとmanifestも再生成します。
+
+```powershell
+uv sync --locked
+uv run --locked python examples/sqlite/prepare_example.py
+```
+
+`experiments/example_oubo/` の設定・SQL・CSV・評価指標・プロット・メタデータは保存します。DBとモデルは除外します。このページの学習・推論コマンドで新しいrunにDBとモデルを作成できます。保存済みメタデータは当時の記録です。再実行時には別のrun ID・ハッシュが記録されます。他のexperimentはignore対象です。

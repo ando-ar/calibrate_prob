@@ -1,0 +1,6 @@
+[model]
+score = "oubo_score"
+label = "label"
+probability = "oubo_prob"
+numeric_features = ["seeker_skill"]
+bins = 10

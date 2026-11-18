@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 465" role="img">
+<title>Calibration on held-out data</title>
+<rect width="620" height="465" fill="white"/>
+<g font-family="sans-serif" font-size="12" fill="#0f172a">
+<text x="80" y="28" font-size="18">Calibration on held-out data (n=144)</text>
+<path d="M80.0 55V395 M80 395.0H420" stroke="#e2e8f0"/>
+<text x="80.0" y="415" text-anchor="middle">0.0</text>
+<text x="68" y="399.0" text-anchor="end">0.0</text>
+<path d="M148.0 55V395 M80 327.0H420" stroke="#e2e8f0"/>
+<text x="148.0" y="415" text-anchor="middle">0.2</text>
+<text x="68" y="331.0" text-anchor="end">0.2</text>
+<path d="M216.0 55V395 M80 259.0H420" stroke="#e2e8f0"/>
+<text x="216.0" y="415" text-anchor="middle">0.4</text>
+<text x="68" y="263.0" text-anchor="end">0.4</text>
+<path d="M284.0 55V395 M80 191.0H420" stroke="#e2e8f0"/>
+<text x="284.0" y="415" text-anchor="middle">0.6</text>
+<text x="68" y="195.0" text-anchor="end">0.6</text>
+<path d="M352.0 55V395 M80 123.0H420" stroke="#e2e8f0"/>
+<text x="352.0" y="415" text-anchor="middle">0.8</text>
+<text x="68" y="127.0" text-anchor="end">0.8</text>
+<path d="M420.0 55V395 M80 55.0H420" stroke="#e2e8f0"/>
+<text x="420.0" y="415" text-anchor="middle">1.0</text>
+<text x="68" y="59.0" text-anchor="end">1.0</text>
+<path d="M80 55V395H420" fill="none" stroke="#334155"/>
+<path d="M80 395L420 55" stroke="#64748b" stroke-dasharray="4 4"/>
+<text x="250.0" y="438" text-anchor="middle">Mean predicted probability</text>
+<text x="23" y="225" transform="rotate(-90 23 225)" text-anchor="middle">Observed positive rate</text>
+<text x="448" y="138" fill="#64748b">Perfect calibration</text>
+<polyline points="102.32,352.50 135.59,349.05 162.19,289.91 195.59,350.65 222.96,395.00 259.06,225.00 293.19,225.00" fill="none" stroke="#a54b18" stroke-width="2"/>
+<circle cx="102.32" cy="352.50" r="4" fill="#a54b18"/>
+<circle cx="135.59" cy="349.05" r="4" fill="#a54b18"/>
+<circle cx="162.19" cy="289.91" r="4" fill="#a54b18"/>
+<circle cx="195.59" cy="350.65" r="4" fill="#a54b18"/>
+<circle cx="222.96" cy="395.00" r="4" fill="#a54b18"/>
+<circle cx="259.06" cy="225.00" r="4" fill="#a54b18"/>
+<circle cx="293.19" cy="225.00" r="4" fill="#a54b18"/>
+<text x="448" y="162" fill="#a54b18">CatBoost before isotonic</text>
+<polyline points="82.52,395.00 131.60,336.95 149.63,317.73 193.33,281.67 306.67,225.00" fill="none" stroke="#096899" stroke-width="2"/>
+<circle cx="82.52" cy="395.00" r="4" fill="#096899"/>
+<circle cx="131.60" cy="336.95" r="4" fill="#096899"/>
+<circle cx="149.63" cy="317.73" r="4" fill="#096899"/>
+<circle cx="193.33" cy="281.67" r="4" fill="#096899"/>
+<circle cx="306.67" cy="225.00" r="4" fill="#096899"/>
+<text x="448" y="186" fill="#096899">After isotonic</text>
+</g></svg>
