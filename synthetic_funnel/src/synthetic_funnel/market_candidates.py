@@ -17,8 +17,10 @@ from .mechanism import probability_arrays
 from .rates import population_rates
 from .shared import FEATURE_FIELDS, STAGES, ProbabilityConfig
 
-# Observed candidate list.  The snapshot counts are upper-bound approximations:
-# screening rejections and cancellations are not recorded as observable events.
+# Observed candidate list.  Snapshot counts are now exact: events.outcome_dt
+# records the observed terminal time of every cancellation (issue #32), so an
+# applied case is "in flight" at :day only when neither kettei_dt nor outcome_dt
+# has happened by then.  status/auto are intentionally not used as features.
 DAILY_CANDIDATES_SQL = """\
 SELECT
     :day AS day_dt,
@@ -35,11 +37,13 @@ SELECT
     (SELECT COUNT(*) FROM events AS o
       WHERE o.user_id = u.user_id
         AND o.oubo_dt IS NOT NULL AND o.oubo_dt <= :day
-        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)) AS other_applications,
+        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)
+        AND (o.outcome_dt IS NULL OR o.outcome_dt > :day)) AS other_applications,
     (SELECT COUNT(*) FROM events AS c
       WHERE c.item_id = i.item_id
         AND c.oubo_dt IS NOT NULL AND c.oubo_dt <= :day
-        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)) AS competing_candidates
+        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)
+        AND (c.outcome_dt IS NULL OR c.outcome_dt > :day)) AS competing_candidates
 FROM user AS u
 JOIN item AS i ON i.occupation = u.occupation
 WHERE u.arrival_dt <= :day AND (u.departure_dt IS NULL OR u.departure_dt > :day)
@@ -68,11 +72,13 @@ SELECT
     (SELECT COUNT(*) FROM events AS o
       WHERE o.user_id = u.user_id
         AND o.oubo_dt IS NOT NULL AND o.oubo_dt <= :day
-        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)) AS other_applications,
+        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)
+        AND (o.outcome_dt IS NULL OR o.outcome_dt > :day)) AS other_applications,
     (SELECT COUNT(*) FROM events AS c
       WHERE c.item_id = i.item_id
         AND c.oubo_dt IS NOT NULL AND c.oubo_dt <= :day
-        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)) AS competing_candidates,
+        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)
+        AND (c.outcome_dt IS NULL OR c.outcome_dt > :day)) AS competing_candidates,
     1 - ABS(u.user_skill - i.required_skill) AS skill_match,
     MAX(i.required_skill - u.user_skill, 0) AS skill_shortfall,
     MAX(u.user_skill - i.required_skill, 0) AS overqualification,
@@ -111,8 +117,8 @@ def attach_latent_truth(rows, *, seed=71):
     """Add counterfactual p_* columns to stage-one candidate rows.
 
     ``seed`` must be the market seed recorded in ``manifest.json`` so the anchor
-    intercepts match the generating market.  The p_* values use the observed
-    snapshot counts, so like those counts they are an approximation for a pair
+    intercepts match the generating market.  The snapshot counts are exact now
+    that cancellations are observed, but p_* is still an estimate for a pair
     that has never been introduced.
     """
     base = ProbabilityConfig(seed=seed)

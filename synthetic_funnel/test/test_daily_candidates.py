@@ -5,7 +5,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import numpy as np
+
 from synthetic_funnel import MarketConfig, write_market_dataset
+from synthetic_funnel.market import simulate
 from synthetic_funnel.market_candidates import (
     BATCH_DAY_TABLE_SQL,
     DAILY_CANDIDATES_LATENT_SQL,
@@ -99,13 +102,15 @@ class DailyCandidatesTest(unittest.TestCase):
             for row in rows:
                 other = connection.execute(
                     "SELECT COUNT(*) FROM events WHERE user_id = ? AND oubo_dt IS NOT NULL "
-                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?)",
-                    (row["user_id"], DAY, DAY),
+                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?) "
+                    "AND (outcome_dt IS NULL OR outcome_dt > ?)",
+                    (row["user_id"], DAY, DAY, DAY),
                 ).fetchone()[0]
                 rivals = connection.execute(
                     "SELECT COUNT(*) FROM events WHERE item_id = ? AND oubo_dt IS NOT NULL "
-                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?)",
-                    (row["item_id"], DAY, DAY),
+                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?) "
+                    "AND (outcome_dt IS NULL OR outcome_dt > ?)",
+                    (row["item_id"], DAY, DAY, DAY),
                 ).fetchone()[0]
                 self.assertEqual(row["other_applications"], other)
                 self.assertEqual(row["competing_candidates"], rivals)
@@ -155,6 +160,67 @@ class DailyCandidatesTest(unittest.TestCase):
         page = (Path(__file__).resolve().parents[1] / "docs" / "DAILY_CANDIDATES.md").read_text(encoding="utf-8")
         self.assertIn(DAILY_CANDIDATES_SQL.strip(), page)
         self.assertIn(DAILY_CANDIDATES_LATENT_SQL.strip(), page)
+
+
+    def test_snapshot_counts_equal_observed_reconstruction(self):
+        """The #31 snapshot is exactly reconstructable now that outcomes are observed."""
+        snapshot_days = {DAY_INDEX: None}
+        rows, seekers, jobs = simulate(CONFIG, snapshot_days=snapshot_days)
+        snapshot = snapshot_days[DAY_INDEX]
+        # Map snapshot-local actor indices back to the canonical user/item ids.
+        seeker_index = {tuple(str(v) for v in profile[:7]): index
+                        for index, profile in enumerate(seekers)}
+        job_index = {tuple(str(v) for v in profile[:7]): index
+                     for index, profile in enumerate(jobs)}
+        user_ids = {local: f"user-{seeker_index[tuple(str(v) for v in profile[:7])]:09d}"
+                    for local, profile in enumerate(snapshot['seekers'])}
+        item_ids = {local: f"item-{job_index[tuple(str(v) for v in profile[:7])]:04d}"
+                    for local, profile in enumerate(snapshot['jobs'])}
+        snapshot_rows = snapshot['rows']
+        user_in_flight = {user_ids[local]: int(np.sum((snapshot_rows['seeker'] == local)
+                                                      & np.isfinite(snapshot_rows['application'])))
+                          for local in user_ids}
+        job_in_flight = {item_ids[local]: int(np.sum((snapshot_rows['job'] == local)
+                                                     & np.isfinite(snapshot_rows['application'])))
+                         for local in item_ids}
+        self.assertTrue(any(user_in_flight.values()))
+
+        # The snapshot is taken at the end of day D, after all events before D+1
+        # have been processed, so the matching SQL boundary is the D+1 boundary.
+        day_end = (START + timedelta(days=DAY_INDEX + 1)).isoformat()
+        with closing(self.connect()) as connection:
+            reconstructed_users = {
+                uid: connection.execute(
+                    "SELECT COUNT(*) FROM events WHERE user_id = ? AND oubo_dt IS NOT NULL "
+                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?) "
+                    "AND (outcome_dt IS NULL OR outcome_dt > ?)", (uid, day_end, day_end, day_end)
+                ).fetchone()[0]
+                for uid in user_ids.values()
+            }
+            reconstructed_items = {
+                iid: connection.execute(
+                    "SELECT COUNT(*) FROM events WHERE item_id = ? AND oubo_dt IS NOT NULL "
+                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?) "
+                    "AND (outcome_dt IS NULL OR outcome_dt > ?)", (iid, day_end, day_end, day_end)
+                ).fetchone()[0]
+                for iid in item_ids.values()
+            }
+        self.assertEqual(user_in_flight, reconstructed_users)
+        self.assertEqual(job_in_flight, reconstructed_items)
+
+        # The same predicate used by the recipe must match exactly on a sample
+        # of candidate rows (candidate_rows runs at the inclusive day boundary).
+        with closing(self.connect()) as connection:
+            candidates = candidate_rows(connection, day_end)
+            self.assertTrue(candidates)
+            for candidate in candidates:
+                expected_user = connection.execute(
+                    "SELECT COUNT(*) FROM events WHERE user_id = ? AND oubo_dt IS NOT NULL "
+                    "AND oubo_dt <= ? AND (kettei_dt IS NULL OR kettei_dt > ?) "
+                    "AND (outcome_dt IS NULL OR outcome_dt > ?)",
+                    (candidate['user_id'], day_end, day_end, day_end)
+                ).fetchone()[0]
+                self.assertEqual(candidate['other_applications'], expected_user)
 
 
 if __name__ == "__main__":

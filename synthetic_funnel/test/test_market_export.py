@@ -12,7 +12,11 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from synthetic_funnel import MarketConfig, OCCUPATIONS, REGIONS, write_market_dataset
-from synthetic_funnel.market import simulate
+from synthetic_funnel.market import DTYPE, OUTCOME_STATUS_CODES, simulate
+from synthetic_funnel.market_export import EVENTS_LATENT_TABLE, EVENTS_TABLE, _event_records
+
+OUTCOME_STATUSES = ('not_applied', 'ng', 'withdrawn', 'cancelled_posting_expiry',
+                    'cancelled_seeker_exit', 'cancelled_market_end')
 
 MARKET_START = "2024-01-01T00:00:00+09:00"
 
@@ -264,6 +268,84 @@ class MarketExportTest(unittest.TestCase):
         output.mkdir()
         with self.assertRaises(FileExistsError):
             write_market_dataset(MarketConfig(days=1), output, market_start=MARKET_START)
+
+
+    def test_outcome_columns_are_consistent_across_formats(self):
+        config = MarketConfig(days=40, seeker_arrivals=4, job_arrivals=5, seed=71)
+        paths = {}
+        for output_format in ("sqlite", "parquet", "csv"):
+            output = self.root / f"outcomes-{output_format}"
+            write_market_dataset(config, output, market_start=MARKET_START,
+                                 output_format=output_format)
+            paths[output_format] = output
+        self.assertTrue({"status", "outcome_dt", "auto"} <= set(EVENTS_TABLE.fields))
+        self.assertNotIn("status", EVENTS_LATENT_TABLE.fields)
+        self.assertNotIn("outcome_dt", EVENTS_LATENT_TABLE.fields)
+        self.assertNotIn("auto", EVENTS_LATENT_TABLE.fields)
+
+        def normalized(status, outcome, auto):
+            return (status or None, outcome or None, int(auto))
+
+        with closing(sqlite3.connect(paths["sqlite"] / "dataset.sqlite.db")) as connection:
+            columns = {row[1]: row[2] for row in connection.execute("PRAGMA table_info(events)")}
+            self.assertEqual(columns["status"], "TEXT")
+            self.assertEqual(columns["outcome_dt"], "TEXT")
+            self.assertEqual(columns["auto"], "INTEGER")
+            sqlite_outcomes = {
+                event_id: normalized(status, outcome, auto)
+                for event_id, status, outcome, auto in connection.execute(
+                    "SELECT event_id, status, outcome_dt, auto FROM events")
+            }
+        for status, outcome, auto in sqlite_outcomes.values():
+            self.assertTrue(status is None or status in OUTCOME_STATUSES)
+            self.assertEqual(status is None, outcome is None)
+            if status is None:
+                self.assertEqual(auto, 0)
+            if auto == 1:
+                self.assertIn(status, ("ng", "withdrawn"))
+        self.assertTrue(any(value[0] is not None for value in sqlite_outcomes.values()))
+        with closing(sqlite3.connect(paths["sqlite"] / "dataset.sqlite.db")) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM events WHERE status IS NOT NULL AND kettei_dt IS NOT NULL"
+            ).fetchone()[0], 0)
+
+        parquet = pq.read_table(paths["parquet"] / "events.parquet")
+        parquet_outcomes = {
+            event_id: normalized(status, outcome, auto)
+            for event_id, status, outcome, auto in zip(
+                parquet["event_id"].to_pylist(), parquet["status"].to_pylist(),
+                parquet["outcome_dt"].to_pylist(), parquet["auto"].to_pylist(), strict=True)
+        }
+        with (paths["csv"] / "events.csv").open(encoding="utf-8", newline="") as stream:
+            csv_outcomes = {
+                row["event_id"]: normalized(row["status"], row["outcome_dt"], row["auto"])
+                for row in csv.DictReader(stream)
+            }
+        self.assertEqual(parquet_outcomes, sqlite_outcomes)
+        self.assertEqual(csv_outcomes, sqlite_outcomes)
+
+    def test_every_status_code_maps_to_its_enum_text(self):
+        count = len(OUTCOME_STATUSES)
+        rows = np.zeros(count, dtype=DTYPE)
+        rows['seeker'] = np.arange(count)
+        rows['job'] = np.arange(count)
+        rows['day'] = 1.0
+        rows['status'] = np.arange(1, count + 1)
+        rows['outcome_dt'] = 2.5
+        rows['auto'] = [0, 1, 1, 0, 0, 0]
+        seekers = np.empty((count, 8), dtype=object)
+        jobs = np.empty((count, 8), dtype=object)
+        profile = [0., .5, 500., 'エンジニア', '東京', 0, 0., np.nan]
+        for index in range(count):
+            seekers[index] = profile
+            jobs[index] = profile
+        scores = np.zeros((count, 3))
+        events = [event for event, _ in _event_records(
+            rows, seekers, jobs, datetime.fromisoformat(MARKET_START), scores, None)]
+        self.assertEqual([event['status'] for event in events], list(OUTCOME_STATUSES))
+        self.assertTrue(all(event['outcome_dt'] is not None for event in events))
+        self.assertEqual([event['auto'] for event in events], [0, 1, 1, 0, 0, 0])
+        self.assertEqual(OUTCOME_STATUS_CODES['cancelled_market_end'], count)
 
 
 if __name__ == "__main__":

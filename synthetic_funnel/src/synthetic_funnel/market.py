@@ -19,10 +19,27 @@ FAILURE_REASONS={1:'not_applied',2:'candidate_withdrawal',3:'employer_rejection'
 # ignoring exits, posting expiry and cancellations.
 LATENT_STAGE_DELAYS=((3.,2.),(5.,4.),(30.,20.))
 LATENT_STREAM=0x6C6174656E74  # b'latent'; seeds the counterfactual stream apart from the market stream
+# Observed terminal outcomes stored in events (issue #32). Code 0 means NULL:
+# no terminal result was observed (hired, still in flight, or observation-end censored).
+OUTCOME_STATUSES=('not_applied','ng','withdrawn','cancelled_posting_expiry',
+                  'cancelled_seeker_exit','cancelled_market_end')
+OUTCOME_STATUS_CODES={name:index+1 for index,name in enumerate(OUTCOME_STATUSES)}
 DTYPE=np.dtype([(k,'i4') for k in ('seeker','job','day')]+[(k,'f8') for k in ('application','screening','decision','pa','ps','pd')]+[(k,'i2') for k in ('other_applications','competing_candidates')]
                +[(k,'f8') for k in (*LATENT_CANDIDATE_FIELDS,*LATENT_EMPLOYER_FIELDS,*LATENT_DATE_FIELDS)]
-               +[('failure_stage','i2'),('failure_reason','i2')])
+               +[('failure_stage','i2'),('failure_reason','i2')]
+               +[('status','i2'),('outcome_dt','f8'),('auto','i2')])
 INTRODUCTION_OFFSET_DAYS = 0.01
+
+
+def observed_failure_status(u,p,p_employer):
+    """Split a failed two-sided gate using the draw already consumed by the gate.
+
+    Failure is u >= p with p = p_candidate * p_employer.  Conditional on failure,
+    the employer side is the culprit for u < (1 - p_employer + p), which has the
+    correct probability (1 - p_employer) / (1 - p).  This is the same priority as
+    counterfactual() and, critically, consumes no extra random draw.
+    """
+    return 'ng' if u < 1.0-p_employer+p else 'withdrawn'
 
 # Categories are drawn once per arriving participant and shared by the filtering rules.
 OCCUPATIONS = ("エンジニア", "営業", "事務", "デザイン", "マーケティング", "介護", "販売", "製造")
@@ -164,10 +181,17 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
         if sid in live_s and live_s[sid]['until']<=t and not live_s[sid]['pending']:
             seekers[sid][7]=t
             del live_s[sid]
-    def finish(eid,t):
+    def finish(eid,t,status=None,auto=0):
         c=cases.pop(eid,None)
         if c is None:return
-        sid,jid,_,_,_=c
+        sid,jid,chunk,offset,_=c
+        row=chunks[chunk][offset]
+        # A hired case (finite decision time) never receives a terminal outcome,
+        # even when it is a member of the cascade's pending sets.
+        if status is not None and not np.isfinite(row['decision']):
+            row['status']=OUTCOME_STATUS_CODES[status]
+            row['outcome_dt']=t
+            row['auto']=auto
         if sid in live_s:live_s[sid]['pending'].discard(eid)
         if jid in live_j:live_j[jid]['pending'].discard(eid)
         natural(sid,t)
@@ -177,29 +201,39 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             if eid not in cases:continue
             sid,jid,chunk,offset,_=cases[eid]
             if sid not in live_s or jid not in live_j:
-                finish(eid,t);continue
+                finish(eid,t,'cancelled_market_end');continue
             row=chunks[chunk][offset]
             if stage==0:
-                if live_s[sid]['until']<=t:finish(eid,t);continue
+                if live_s[sid]['until']<=t:finish(eid,t,'cancelled_seeker_exit');continue
                 row['application']=t
                 count_transition(0,t)
                 cases[eid]=(sid,jid,chunk,offset,1)
                 heapq.heappush(queue,(t+delay(5,4),rng.random(),eid,1))
             elif stage==1:
-                if eid!=focal_eid and rng.random()>=row['ps']:finish(eid,t);continue
+                if eid!=focal_eid and (u:=rng.random())>=row['ps']:
+                    finish(eid,t,observed_failure_status(u,row['ps'],row['p_employer_screening']))
+                    continue
                 row['screening']=t
                 count_transition(1,t)
                 cases[eid]=(sid,jid,chunk,offset,2)
                 heapq.heappush(queue,(t+delay(30,20),rng.random(),eid,2))
             else:
-                if eid!=focal_eid and rng.random()>=row['pd']:finish(eid,t);continue
+                if eid!=focal_eid and (u:=rng.random())>=row['pd']:
+                    finish(eid,t,observed_failure_status(u,row['pd'],row['p_employer_decision']))
+                    continue
                 row['decision']=t
                 count_transition(2,t)
                 seekers[sid][7]=t
                 jobs[jid][7]=t
                 s=live_s.pop(sid)
                 j=live_j.pop(jid)
-                for other in s['pending']|j['pending']:finish(other,t)
+                # The hired case itself is in both pending sets; close it without a
+                # negative outcome, and record auto-cascades for the other cases.
+                for other in s['pending']:
+                    if other!=eid:finish(other,t,'withdrawn',auto=1)
+                for other in j['pending']:
+                    if other!=eid:finish(other,t,'ng',auto=1)
+                finish(eid,t)
     focal_eid=-1
     if resume is not None:
         from scipy.special import ndtr, ndtri
@@ -234,12 +268,12 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
         for jid in [i for i,v in live_j.items() if v['until']<=day]:
             j=live_j.pop(jid)
             jobs[jid][7]=day
-            for eid in list(j['pending']):finish(eid,day)
+            for eid in list(j['pending']):finish(eid,day,'cancelled_posting_expiry')
         for sid in list(live_s):
             if sid not in live_s:continue
             if live_s[sid]['until']<=day:
                 for eid in list(live_s[sid]['pending']):
-                    if eid in cases and cases[eid][-1]==0:finish(eid,day)
+                    if eid in cases and cases[eid][-1]==0:finish(eid,day,'cancelled_seeker_exit')
                 natural(sid,day)
         for _ in range(config.seeker_arrivals):
             sid=len(seekers);skill=rng.random()
@@ -278,7 +312,8 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 other=sum(cases[e][-1]>=1 for e in s['pending'] if e in cases)
                 rivals=sum(cases[e][-1]>=1 for e in live_j[jid]['pending'] if e in cases)
                 selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals,
-                                 0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0))
+                                 0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0,
+                                 0,np.nan,0))
         rows=np.array(selected,dtype=DTYPE)
         chunks.append(rows)
         if len(rows):
@@ -291,7 +326,11 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             rows['p_employer_application'],rows['p_employer_screening'],rows['p_employer_decision']=gates[:,:,1].T
             counterfactual(rows,day,latent_rng)
             for offset,row in enumerate(rows):
-                if rng.random()>=row['pa']:continue
+                if rng.random()>=row['pa']:
+                    # The stage-0 gate (lottery) failed: the seeker never applies.
+                    row['status']=OUTCOME_STATUS_CODES['not_applied']
+                    row['outcome_dt']=day+INTRODUCTION_OFFSET_DAYS
+                    continue
                 sid,jid=int(row['seeker']),int(row['job']);eid=next_e;next_e+=1
                 cases[eid]=(sid,jid,len(chunks)-1,offset,0)
                 live_s[sid]['pending'].add(eid);live_j[jid]['pending'].add(eid)

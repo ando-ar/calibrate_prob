@@ -103,9 +103,25 @@ JOIN item_latent AS il USING (item_id)
 | `shoukai_dt` | TEXT | なし | 紹介日時。 | `2025-01-05T00:14:24+09:00` |
 | `oubo_dt` | TEXT | 未到達ならNULL | 観測された応募日時。 | `2025-01-08T10:26:00+09:00` |
 | `shorui_tsuuka_dt` | TEXT | 未到達ならNULL | 観測された書類通過日時。 | NULL |
-| `kettei_dt` | TEXT | 未到達ならNULL | 観測された決定日時。 | NULL |
+| `kettei_dt` | TEXT | 未到達ならNULL | 観測された決定（採用）日時。取消結果とは排他。 | NULL |
+| `status` | TEXT | 終端結果が未観測ならNULL | 観測された終端結果。`not_applied` / `ng` / `withdrawn` / `cancelled_posting_expiry` / `cancelled_seeker_exit` / `cancelled_market_end` のいずれか。採用行はNULL。 | `ng` |
+| `outcome_dt` | TEXT | `status` と同じ | 終端結果が観測された時刻（`market_start` からのオフセットを日時文字列化）。 | `2025-02-03T09:12:00+09:00` |
+| `auto` | INTEGER | なし（常に0または1） | 1=採用成立による自動連鎖（自動NG／自動辞退）、0=それ以外。`status` が `ng` / `withdrawn` のときだけ意味を持ち、それ以外の行では常に0。 | `0` |
 
-紹介から応募・通過・決定へ進む様子は市場の退出や掲載期限で途切れることがあり、未到達の段階はNULLです。締切までに届かなかった日時もNULLになります。
+紹介から応募・通過・決定へ進む様子は市場の退出や掲載期限で途切れることがあり、未到達の段階はNULLです。締切までに届かなかった日時もNULLになります。`status` と `outcome_dt` は常に一緒にNULL（または一緒に非NULL）で、`status` が非NULLの行では `kettei_dt` は必ずNULLです（採用と取消は排他）。1行に終端結果は高々1つで、複数の理由が同時に記録されることはありません。`auto = 1` は `status` が `ng` または `withdrawn` の行だけに現れます。
+
+`status` がNULLのことは「失敗しなかった」ではなく「観測された終端結果がない」ことを意味し、採用済み行（`kettei_dt` 非NULL）と進行中／観測打切り行（典型的には `kettei_dt` NULL）が混在します。採用かどうかは従来どおり `kettei_dt` で判定してください。
+
+`ng` / `withdrawn` の発生段階は保存しません。利用者は `shorui_tsuuka_dt` の有無から導出できます。
+
+- `status = 'ng'` かつ `shorui_tsuuka_dt IS NULL` → 書類選考ゲートのNG。
+- `status = 'ng'` かつ `shorui_tsuuka_dt IS NOT NULL`（かつ `kettei_dt IS NULL`）→ 書類通過後の決定フェーズ（面接などを含む）のNG。
+- `withdrawn` も同様に解釈します（`shorui_tsuuka_dt IS NULL` なら応募後・書類選考前の辞退）。
+- `auto = 1` の行では自動連鎖が主情報で、段階の有無は副次的です。
+
+`not_applied` は応募の抽選（紹介時点のゲート）に失敗して応募に至らなかった行に付きます。`cancelled_posting_expiry` は求人の掲載期限満了、`cancelled_seeker_exit` は求職者の応募可能期間満了、`cancelled_market_end` は相手が既に市場から退出していた場合の安全網です。観測締切時点でまだ終端していない行は打切りとして扱い、`status` / `outcome_dt` はNULLのままです。
+
+`status` / `outcome_dt` / `auto` は紹介後に確定する情報でリークになるため、**学習特徴量として使用禁止**です。`kettei_dt` の採用ラベルと3暦月の成熟度判定は従来どおりです。
 
 ## `events_latent` 潜在値（反実仮の真値）
 
@@ -152,11 +168,22 @@ NULLがなく、`market_start` から観測終了まで1日1行が入ります�
 
 | | 観測値 | 潜在値 |
 | --- | --- | --- |
-| 保存先 | `events` の日時列、`daily` の当日到達数 | `events_latent` 全体、`user_latent`、`item_latent` |
+| 保存先 | `events` の日時列と `status` / `outcome_dt` / `auto`、`daily` の当日到達数 | `events_latent` 全体、`user_latent`、`item_latent` |
 | 受ける影響 | 市場の退出、掲載期限、相手の退出による選考取消、観測締切 | なし（反実仮の真値） |
-| 未到達の表現 | NULL（CSVでは空欄） | 永久に到達しなければNULL、到達するなら日時を記録 |
+| 未到達の表現 | NULL（CSVでは空欄）。終端結果なしもNULLだが、`status` / `outcome_dt` で区別 | 永久に到達しなければNULL、到達するなら日時を記録 |
 
-観測された到達率は、`p_*_eventual` を紹介時点で計算した値よりも市場の打ち切りの分だけ下がり得ます。誰の退出で選考が消えたかといった実績の取消理由は保存せず、退出日時だけをマスターに記録します。
+観測された到達率は、`p_*_eventual` を紹介時点で計算した値よりも市場の打ち切りの分だけ下がり得ます。実績の取消理由は `events.status` / `outcome_dt` / `auto` に記録し、参加者の退出日時はマスターに記録します（退出理由そのものはマスターには保存しません）。観測打切りは取消ではなく、`status` / `outcome_dt` をNULLにして右打切りとして扱います。
+
+語彙が似ているため、`events` の観測結果と `events_latent.failure_reason` の反実仮との対応を明示します。
+
+| 観測（`events.status`） | 反実仮 `failure_reason` | 違い |
+| --- | --- | --- |
+| `ng`（`auto=0`） | `employer_rejection` | 観測は実際にその時点で中止。反実仮は「市場が媒介を続けた場合」の funnel 結果。 |
+| `withdrawn`（`auto=0`） | `candidate_withdrawal`（stage 0 は `not_applied`） | 同上。 |
+| `not_applied` | `not_applied`（stage 0） | 同上。 |
+| `ng` / `withdrawn` の `auto=1` | 対応なし | カスケードは市場固有のイベントで反実仮には存在しない。 |
+| `cancelled_posting_expiry` / `cancelled_seeker_exit` / `cancelled_market_end` | 対応なし | 退出・掲載期限は反実仮では無視される。 |
+| NULL（採用） | NULL（全段階通過） | 採用は `kettei_dt` で表現し、両テーブルとも理由はNULL。 |
 
 3暦月以内の結果を評価する場合は、紹介からの期限と観測締切を比較してラベルが成熟した行を選び、到達日時を期限と比較します。通過の分母は期限内の応募者、決定の分母は期限内の通過者です。
 

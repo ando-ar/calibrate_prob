@@ -19,9 +19,9 @@
 
 `candidates` には潜在由来のスキル特徴量・モチベーション・確率を含めません。スコアモデルの入力にはマスター属性（`FEATURE_FIELDS` の `seeker_skill` など）が必要なため、これらは含めます。マスターの数値スキルは便宜上の代理値です。`candidates_latent` のスキル由来3列も同じ代理値から計算した値で、真のスキルそのものではありません。キーは `(day_dt, user_id, item_id)` で、未紹介ペアなので `event_id` はありません。
 
-### スナップショット状態値の定義と近似
+### スナップショット状態値の定義
 
-`other_applications` は求職者から見て「D までに応募し、D 時点で決定していない案件数」、`competing_candidates` は求人から見て同条件の求職者数です。両者とも `events` から `oubo_dt <= D` かつ `kettei_dt` が D 以内にない行を数えます。シミュレータ内部では応募到達後で保留中の選考を数えますが、合成データでは書類選考落ち（NG）や取消の観測時刻を保存しないため、再構成値は**上限近似**になります（観測化は別 issue `#32` で予定）。
+`other_applications` は求職者から見て「D までに応募し、D 時点で終端していない案件数」、`competing_candidates` は求人から見て同条件の求職者数です。両者とも `events` から `oubo_dt <= D`、`kettei_dt` が D 以内にない、`outcome_dt` が D 以内にない行を数えます。取消の観測時刻 `outcome_dt` が追加された（issue `#32`）ため、書類選考落ち（NG）や辞退・掲載期限切れで消えた案件も D 時点で正しく除外され、シミュレータ内部の保留中件数と**正確に一致**します（従来の上限近似ではなくなりました）。`status` / `auto` は終端の有無を判定するには不要で、学習特徴量としても使用禁止です。
 
 ## 日次クエリ（`candidates`）
 
@@ -41,11 +41,13 @@ SELECT
     (SELECT COUNT(*) FROM events AS o
       WHERE o.user_id = u.user_id
         AND o.oubo_dt IS NOT NULL AND o.oubo_dt <= :day
-        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)) AS other_applications,
+        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)
+        AND (o.outcome_dt IS NULL OR o.outcome_dt > :day)) AS other_applications,
     (SELECT COUNT(*) FROM events AS c
       WHERE c.item_id = i.item_id
         AND c.oubo_dt IS NOT NULL AND c.oubo_dt <= :day
-        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)) AS competing_candidates
+        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)
+        AND (c.outcome_dt IS NULL OR c.outcome_dt > :day)) AS competing_candidates
 FROM user AS u
 JOIN item AS i ON i.occupation = u.occupation
 WHERE u.arrival_dt <= :day AND (u.departure_dt IS NULL OR u.departure_dt > :day)
@@ -94,11 +96,13 @@ SELECT
     (SELECT COUNT(*) FROM events AS o
       WHERE o.user_id = u.user_id
         AND o.oubo_dt IS NOT NULL AND o.oubo_dt <= :day
-        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)) AS other_applications,
+        AND (o.kettei_dt IS NULL OR o.kettei_dt > :day)
+        AND (o.outcome_dt IS NULL OR o.outcome_dt > :day)) AS other_applications,
     (SELECT COUNT(*) FROM events AS c
       WHERE c.item_id = i.item_id
         AND c.oubo_dt IS NOT NULL AND c.oubo_dt <= :day
-        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)) AS competing_candidates,
+        AND (c.kettei_dt IS NULL OR c.kettei_dt > :day)
+        AND (c.outcome_dt IS NULL OR c.outcome_dt > :day)) AS competing_candidates,
     1 - ABS(u.user_skill - i.required_skill) AS skill_match,
     MAX(i.required_skill - u.user_skill, 0) AS skill_shortfall,
     MAX(u.user_skill - i.required_skill, 0) AS overqualification,
@@ -118,7 +122,7 @@ WHERE u.arrival_dt <= :day AND (u.departure_dt IS NULL OR u.departure_dt > :day)
 
 ### 段2: mechanism で反実仮確率を付与
 
-`p_*` は SQL だけでは計算できません。`attach_latent_truth` が `FEATURE_FIELDS` を組み立て、`manifest.config.seed` と同じ seed の `ProbabilityConfig` からアンカー切片を求め、`mechanism.probability_arrays` を呼び出して `p_candidate_*` / `p_employer_*` / `p_*_eventual` を付けます。スナップショット件数から計算するため、未紹介ペアの `p_*` も状態値と同じく近似です。
+`p_*` は SQL だけでは計算できません。`attach_latent_truth` が `FEATURE_FIELDS` を組み立て、`manifest.config.seed` と同じ seed の `ProbabilityConfig` からアンカー切片を求め、`mechanism.probability_arrays` を呼び出して `p_candidate_*` / `p_employer_*` / `p_*_eventual` を付けます。スナップショットの同時進行件数は `outcome_dt` により正確に再構成できますが、まだ紹介されていないペアに対する `p_*` はその時点の特徴量から推定した値です。
 
 ```python
 from synthetic_funnel.market_candidates import attach_latent_truth, candidate_rows
@@ -155,11 +159,13 @@ SELECT
     (SELECT COUNT(*) FROM events AS o
       WHERE o.user_id = u.user_id
         AND o.oubo_dt IS NOT NULL AND o.oubo_dt <= (SELECT day_dt FROM batch_day)
-        AND (o.kettei_dt IS NULL OR o.kettei_dt > (SELECT day_dt FROM batch_day))) AS other_applications,
+        AND (o.kettei_dt IS NULL OR o.kettei_dt > (SELECT day_dt FROM batch_day))
+        AND (o.outcome_dt IS NULL OR o.outcome_dt > (SELECT day_dt FROM batch_day))) AS other_applications,
     (SELECT COUNT(*) FROM events AS c
       WHERE c.item_id = i.item_id
         AND c.oubo_dt IS NOT NULL AND c.oubo_dt <= (SELECT day_dt FROM batch_day)
-        AND (c.kettei_dt IS NULL OR c.kettei_dt > (SELECT day_dt FROM batch_day))) AS competing_candidates
+        AND (c.kettei_dt IS NULL OR c.kettei_dt > (SELECT day_dt FROM batch_day))
+        AND (c.outcome_dt IS NULL OR c.outcome_dt > (SELECT day_dt FROM batch_day))) AS competing_candidates
 FROM user AS u
 JOIN item AS i ON i.occupation = u.occupation
 WHERE u.arrival_dt <= (SELECT day_dt FROM batch_day) AND (u.departure_dt IS NULL OR u.departure_dt > (SELECT day_dt FROM batch_day))

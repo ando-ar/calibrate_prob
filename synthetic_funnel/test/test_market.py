@@ -1,10 +1,21 @@
+import hashlib
+import inspect
 import unittest
 from typing import Any, cast
 from unittest.mock import patch
 
 import numpy as np
 
-from synthetic_funnel.market import LATENT_DATE_FIELDS, OCCUPATIONS, REGIONS, MarketConfig, simulate
+from synthetic_funnel.market import (
+    LATENT_DATE_FIELDS,
+    OCCUPATIONS,
+    OUTCOME_STATUSES,
+    OUTCOME_STATUS_CODES,
+    REGIONS,
+    MarketConfig,
+    observed_failure_status,
+    simulate,
+)
 
 
 def tiled_gates(gates):
@@ -178,6 +189,132 @@ class MarketTest(unittest.TestCase):
         self.assertGreater(float(np.mean(dense['competing_candidates'])),float(np.mean(sparse['competing_candidates'])))
         for key in sparse.dtype.names:
             np.testing.assert_array_equal(sparse[key],repeat[key])
+
+
+class MarketOutcomeTest(unittest.TestCase):
+    """issue #32: observed terminal outcomes for every finish() path."""
+
+    # Fingerprints recorded from the pre-change implementation for a fixed seed.
+    # All observed arrival dates and all events_latent values must stay identical:
+    # the NG side is derived from the gate draw that was already consumed.
+    PRE_CHANGE_GOLDEN = {
+        "application": "bf0d198a149a21746688fb0734068251fd16f5302aaeb31177d4839e36320cd7",
+        "screening": "26d8f10e63a5f6d34086284d111d45eb48d9ad8a2b16d8372c99bcb1225a25ae",
+        "decision": "31b5c58a48de10471c10c389ddd10fbe7554114c1563b03e6ff70629a622c533",
+        "pa": "fd78d7e23a884f2273478757d6d1c62901a75281f0cc8acc6d342b4ff19a8da4",
+        "ps": "c177aa42533dc255e441fc6d7008f08bdc4d3e8cfce908ea4e90368c50e69027",
+        "pd": "86ec635e331be3287f2de80a2caf842cc7324d2f22f14953258527582637caf0",
+        "p_candidate_application": "fd78d7e23a884f2273478757d6d1c62901a75281f0cc8acc6d342b4ff19a8da4",
+        "p_candidate_screening": "549a632ed9d5e384c7aaa228f7f3b75fffe4ca5101c665e3da3d2bdbc904dac2",
+        "p_candidate_decision": "19355a5328ac1632ce07e0e332c3323dc18a78df8df6bd412b22b91cc2b1a205",
+        "p_employer_application": "92ff757e28607496ce3fd902a40ad28bc21454a591a6d559b1c07da5d8bbefff",
+        "p_employer_screening": "111ee84cb4b6a0fbbf6476711d258da6fb984a45ea43a2cd52ab49d07ad7ce57",
+        "p_employer_decision": "8685dc1d0d9429da3fd171250ce9feb451f1cc93d374b76d4e5b9b4727b43b52",
+        "latent_oubo_dt": "ec8f60d094d1f0e1ede12f3e505285204f5316d771ac43b1f9de90a23e52bd80",
+        "latent_shorui_tsuuka_dt": "c58f5e9be2295b57ae6bb31c9fd9b55bc5965441f312a225111ab470adffb444",
+        "latent_kettei_dt": "31b5c58a48de10471c10c389ddd10fbe7554114c1563b03e6ff70629a622c533",
+        "failure_stage": "824c2684c379f9c1e26552069dbd996ab7dcbad95c74adc139d0422d7d733908",
+        "failure_reason": "ce2ca70c0eabd2c33de3f594d97775fa4fa397d7862788d396d4abcc35289a1b",
+    }
+    GOLDEN_ROWS = 1179
+
+    def simulate_with_gates(self, gates, **overrides):
+        options = dict(days=30, seeker_arrivals=5, job_arrivals=5, seed=7)
+        options.update(overrides)
+        with patch('synthetic_funnel.market.probability_arrays',
+                   side_effect=tiled_gates(np.asarray(gates))):
+            return simulate(MarketConfig(**options))[0]
+
+    def codes(self, rows, *names):
+        return np.isin(rows['status'], [OUTCOME_STATUS_CODES[name] for name in names])
+
+    def test_status_enum_is_exactly_six_mutually_exclusive_values(self):
+        self.assertEqual(OUTCOME_STATUSES, (
+            'not_applied', 'ng', 'withdrawn', 'cancelled_posting_expiry',
+            'cancelled_seeker_exit', 'cancelled_market_end',
+        ))
+        self.assertEqual(set(OUTCOME_STATUS_CODES.values()), set(range(1, 7)))
+
+    def test_ng_side_comes_from_the_existing_gate_draw(self):
+        # p = 0.25 with p_employer = 0.5; employer side is the culprit for u < 0.75.
+        self.assertEqual(observed_failure_status(0.25, 0.25, 0.5), 'ng')
+        self.assertEqual(observed_failure_status(0.749999, 0.25, 0.5), 'ng')
+        self.assertEqual(observed_failure_status(0.75, 0.25, 0.5), 'withdrawn')
+        self.assertEqual(observed_failure_status(0.99, 0.25, 0.5), 'withdrawn')
+        # An employer-only gate (p_employer = 1) can never produce an NG.
+        self.assertEqual(observed_failure_status(0.999, 0.01, 1.0), 'withdrawn')
+
+    def test_not_applied_on_stage_zero_gate_failure(self):
+        rows = self.simulate_with_gates([[0., 1.], [.5, .5], [.5, .5]])
+        self.assertGreater(len(rows), 0)
+        self.assertTrue(np.all(self.codes(rows, 'not_applied')))
+        self.assertTrue(np.all(~np.isfinite(rows['application'])))
+        self.assertTrue(np.all(rows['auto'] == 0))
+        self.assertTrue(np.all(np.isfinite(rows['outcome_dt'])))
+
+    def test_gate_failures_record_ng_and_withdrawn_without_auto(self):
+        rows = self.simulate_with_gates([[1., 1.], [.25, .5], [.25, .5]])
+        gate_failed = self.codes(rows, 'ng', 'withdrawn') & (rows['auto'] == 0)
+        self.assertGreater(int(np.sum(gate_failed & self.codes(rows, 'ng'))), 0)
+        self.assertGreater(int(np.sum(gate_failed & self.codes(rows, 'withdrawn'))), 0)
+        self.assertFalse(np.any(self.codes(rows, 'not_applied')))
+        # Stage 1 (screening) failures have no screening date; stage 2 failures do.
+        stage1 = gate_failed & ~np.isfinite(rows['screening'])
+        stage2 = gate_failed & np.isfinite(rows['screening'])
+        self.assertGreater(int(stage1.sum()), 0)
+        self.assertGreater(int(stage2.sum()), 0)
+
+    def test_hired_cascades_set_auto_and_skip_the_hired_case(self):
+        rows = self.simulate_with_gates([[1., 1.], [1., 1.], [1., 1.]], days=40, referrals=5)
+        hired = np.isfinite(rows['decision'])
+        auto_rows = rows[rows['auto'] == 1]
+        # The hired case itself never receives a negative status.
+        self.assertTrue(np.all(rows['status'][hired] == 0))
+        self.assertGreater(int(np.sum(self.codes(auto_rows, 'ng'))), 0)
+        self.assertGreater(int(np.sum(self.codes(auto_rows, 'withdrawn'))), 0)
+        self.assertTrue(np.all(~np.isfinite(auto_rows['decision'])))
+        hired_decisions = set(rows['decision'][hired])
+        self.assertTrue(all(o in hired_decisions for o in auto_rows['outcome_dt']))
+
+    def test_seeker_exit_and_posting_expiry_are_observed(self):
+        seeker_rows = self.simulate_with_gates(
+            [[1., 1.], [.5, .5], [.5, .5]], days=40, application_days=3)
+        self.assertGreater(int(np.sum(self.codes(seeker_rows, 'cancelled_seeker_exit'))), 0)
+        job_rows = self.simulate_with_gates(
+            [[1., 1.], [1., 1.], [.5, .5]], days=40, posting_days=8, application_days=30)
+        self.assertGreater(int(np.sum(self.codes(job_rows, 'cancelled_posting_expiry'))), 0)
+
+    def test_market_end_safety_net_is_wired_to_cancelled_market_end(self):
+        # The safety net is defensive and does not trigger in ordinary runs;
+        # guard the wiring so the reason cannot be silently dropped.
+        self.assertIn('cancelled_market_end', OUTCOME_STATUSES)
+        source = inspect.getsource(simulate)
+        self.assertIn('if sid not in live_s or jid not in live_j', source)
+        self.assertIn("finish(eid,t,'cancelled_market_end')", source)
+
+    def test_outcome_invariants_on_a_fixed_seed(self):
+        config = MarketConfig(days=40, seeker_arrivals=4, job_arrivals=5, seed=71)
+        rows, _, _ = simulate(config)
+        nonzero = rows['status'] != 0
+        np.testing.assert_array_equal(np.isfinite(rows['outcome_dt']), nonzero)
+        self.assertTrue(np.all(rows['auto'][~nonzero] == 0))
+        self.assertTrue(np.all(np.isin(rows['auto'], (0, 1))))
+        self.assertTrue(np.all(rows['auto'][~np.isin(rows['status'],
+            (OUTCOME_STATUS_CODES['ng'], OUTCOME_STATUS_CODES['withdrawn']))] == 0))
+        self.assertFalse(np.any(nonzero & np.isfinite(rows['decision'])))
+        last_stage = np.where(np.isfinite(rows['decision']), rows['decision'],
+                     np.where(np.isfinite(rows['screening']), rows['screening'],
+                              np.where(np.isfinite(rows['application']), rows['application'],
+                                       rows['day'] + 0.01)))
+        self.assertTrue(np.all(rows['outcome_dt'][nonzero] >= last_stage[nonzero]))
+        self.assertTrue(np.all(rows['outcome_dt'][nonzero] < config.days))
+
+    def test_observed_dates_and_latent_values_are_bit_identical(self):
+        rows, _, _ = simulate(MarketConfig(days=40, seeker_arrivals=4, job_arrivals=5, seed=71))
+        self.assertEqual(len(rows), self.GOLDEN_ROWS)
+        for key, expected in self.PRE_CHANGE_GOLDEN.items():
+            digest = hashlib.sha256(np.ascontiguousarray(rows[key]).tobytes()).hexdigest()
+            self.assertEqual(digest, expected, f'{key} changed from the pre-change behaviour')
 
 
 if __name__=='__main__':unittest.main()
