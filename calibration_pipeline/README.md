@@ -92,4 +92,15 @@ CatBoostはCPUで200反復、木の深さ4、1スレッドで学習します。�
 
 校正モデルの読み込みには、同じ依存関係と信頼できるexperimentの保存物を使ってください。実験の入力と出力は原則Gitの対象外です。合成データの `experiments/example_oubo/` とSQLite実行例のCSVは保存します。DBとモデルは除外します。DBの再生成方法は [SQLiteの実行例](examples/sqlite/README.md) を参照してください。
 
+## demo GUI
+
+パイプラインの学習と推論をブラウザから試せるデモです。入力フォームはSQLite実行例で事前入力されており、ボタンを押すと本物のCLIが別プロセスで同期実行され、結果（状態・CLI出力・指標JSON・校正プロット・校正後スコアの表）が同じページに表示されます。生成物は `experiments/demo_gui/` に保存され、Gitの対象外です。
+
+```powershell
+uv sync --locked
+uv run --locked python -m calibration_pipeline.demo_gui
+```
+
+起動すると http://127.0.0.1:8000/ をブラウザで開きます（ポートが使用中の場合は別の空きポート）。学習タブと推論タブを切り替えられ、初回は「fixtureを再生成する」ボタンで `examples/sqlite/` のデモデータを作れます。依存関係の追加はしていません。
+
 [開発用README](dev/README.md)
