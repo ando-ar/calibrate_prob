@@ -1,9 +1,36 @@
 # クイックスタート
 
-## SQLiteで学習と推論を試す
+## demo GUIで学習と推論を試す
 
 Python 3.11以上とuvを使います。リポジトリを取得し、`calibration_pipeline/` で実行してください。
-fixture生成には、同じリポジトリの `../synthetic_funnel/` が必要です。
+依存関係の追加はありません。
+
+```powershell
+uv sync --locked
+uv run --locked python -m calibration_pipeline.demo_gui
+```
+
+ブラウザが開きます（既定は `http://127.0.0.1:8000/`）。学習タブと推論タブを切り替えられます。
+フォームはSQLite実行例で事前入力されています。初回は「fixtureを再生成する」ボタンで
+`examples/sqlite/` のデモデータを作り、そのまま「学習を実行する」を押します。
+その後、推論タブで「推論を実行する」を押すと、最新の学習runで候補の確率を計算します。
+
+ボタンを押すと本物のCLI（`python -m calibration_pipeline.cli`）が別プロセスで同期実行され、
+完了後に同じページへ次の内容が表示されます。
+
+| タブ | 表示内容 |
+| --- | --- |
+| 学習 | 状態とCLI出力、`calibration_metrics.json`（件数・実績率・ECE・Brier・ビン毎）、`calibration_plot.svg`、runディレクトリ |
+| 推論 | 状態とCLI出力、使用した学習run、`calibrated_score` の候補ごとの表 |
+
+学習と推論のフォームはexperiment名（model name）・seed・config・SQL・入力ファイルを上書きできます。
+推論では、使用する学習runを「最新」または過去の成功runから選べます（`--train-run` に相当します）。
+生成物は `experiments/demo_gui/<model_name>/...` に保存され、Gitの対象外です。
+入力が不正な場合はCLIのエラーメッセージがそのまま表示されます。
+
+## SQLiteでCLIから学習と推論を試す
+
+demo GUIと同じ流れをコマンドで実行します。fixture生成には、同じリポジトリの `../synthetic_funnel/` が必要です。
 
 ```powershell
 uv sync --locked
