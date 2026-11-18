@@ -179,8 +179,9 @@ class MarketExportTest(unittest.TestCase):
             self.assertIn("truth_scope", manifest)
             self.assertIn("probability_scope", manifest)
             self.assertIn("training", manifest)
-            self.assertIsInstance(manifest["generation_seconds"], float)
-            self.assertGreaterEqual(manifest["generation_seconds"], 0)
+            # Timing is excluded so the manifest bytes (the data version) are
+            # reproducible for identical config/seed (issue #38).
+            self.assertNotIn("generation_seconds", manifest)
             self.assertNotIn("legacy_models", manifest)
             self.assertNotIn("retention", manifest)
 

@@ -59,7 +59,7 @@ class MarketWarmupTest(unittest.TestCase):
         self.assertEqual(len(training["stages"]), 3)
         self.assertEqual(manifest["training_cutoff"], training["training_cutoff"])
         self.assertEqual(manifest["warmup_end"], training["warmup_end"])
-        self.assertGreaterEqual(manifest["generation_seconds"], 0)
+        self.assertNotIn("generation_seconds", manifest)  # issue #38: reproducible manifest bytes
 
         warmup_end = training["warmup_end"]
         before = [row for row in _events(output) if row["shoukai_dt"] < warmup_end]
