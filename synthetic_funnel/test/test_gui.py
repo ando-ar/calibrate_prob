@@ -272,10 +272,10 @@ class RunInspectionTest(GuiTestCase):
         run_dir = self.write_run("extra_tables")
         database = run_dir / "output" / SQLITE_FILENAME
         with closing(sqlite3.connect(database)) as connection, connection:
-            connection.execute("CREATE TABLE user_latent (id INTEGER, note TEXT)")
-            connection.execute("INSERT INTO user_latent VALUES (1, 'x')")
+            connection.execute("CREATE TABLE extra_note (id INTEGER, note TEXT)")
+            connection.execute("INSERT INTO extra_note VALUES (1, 'x')")
         page = server.render_run_detail(self.state, "extra_tables")
-        self.assertIn("<details><summary>user_latent", page)
+        self.assertIn("<details><summary>extra_note", page)
 
 
 class CliFixtureInspectionTest(GuiTestCase):
