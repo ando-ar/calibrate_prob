@@ -20,6 +20,7 @@ uv run --locked --group docs sphinx-build -b html -W docs dist/docs
 | 真の条件付き確率と基準率の計算方法を読む | [紹介履歴の確率モデル](docs/PROBABILITY_MODEL.md) |
 | 求職者と求人が入れ替わる市場を試し、学習済みモデルのスコアを保存する | [継続市場のシミュレーション](docs/MARKET.md) |
 | SQLiteを校正パイプラインの入力に使う | [校正パイプラインのfixture作成手順](../calibration_pipeline/examples/sqlite/README.md) |
+| 生成と結果確認をブラウザーGUIで試す | [クイックスタートの「GUIで試す」](docs/QUICKSTART.md) |
 
 `synthetic_funnel/` で `uv sync --locked` を実行すると依存ライブラリを準備できます。同じディレクトリで以下を実行してテストします。
 
