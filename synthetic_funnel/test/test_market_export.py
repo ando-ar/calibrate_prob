@@ -81,6 +81,26 @@ class MarketExportTest(unittest.TestCase):
             latent_columns = {row[1] for row in connection.execute("PRAGMA table_info(events_latent)")}
             self.assertNotIn("user_affinity", latent_columns)
             self.assertNotIn("item_affinity", latent_columns)
+            # Skill-derived features belong to events_latent; computable ones stay in events.
+            events_columns = {row[1] for row in connection.execute("PRAGMA table_info(events)")}
+            self.assertTrue({"salary_shortfall", "remote_mismatch", "other_applications",
+                             "competing_candidates"} <= events_columns)
+            self.assertFalse({"skill_match", "skill_shortfall", "overqualification"} & events_columns)
+            self.assertTrue({"skill_match", "skill_shortfall", "overqualification"} <= latent_columns)
+            # The moved values are unchanged: each latent feature still matches the
+            # proxy skills in the masters, and the observable ones match published values.
+            for salary_shortfall, skill_match, skill_shortfall, overqualification, \
+                    user_skill, required_skill, desired_salary, offered_salary in connection.execute(
+                "SELECT e.salary_shortfall, l.skill_match, l.skill_shortfall, l.overqualification, "
+                "       u.user_skill, i.required_skill, u.desired_salary, i.offered_salary "
+                "FROM events AS e JOIN events_latent AS l USING (event_id) "
+                "JOIN user AS u USING (user_id) JOIN item AS i USING (item_id)"
+            ):
+                self.assertAlmostEqual(skill_match, 1 - abs(user_skill - required_skill), places=12)
+                self.assertAlmostEqual(skill_shortfall, max(required_skill - user_skill, 0), places=12)
+                self.assertAlmostEqual(overqualification, max(user_skill - required_skill, 0), places=12)
+                self.assertAlmostEqual(salary_shortfall, max((desired_salary - offered_salary) / desired_salary, 0),
+                                       places=12)
             self.assertEqual(connection.execute(
                 "SELECT count(*) FROM events AS e "
                 "JOIN user AS u USING (user_id) JOIN user_latent AS ul USING (user_id) "
