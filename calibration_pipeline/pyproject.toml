@@ -24,6 +24,12 @@ requires = ["hatchling>=1.26,<2"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
+docs = [
+    "myst-parser>=4,<6",
+    "sphinx>=8.2,<9",
+    "sphinx-rtd-theme>=3.1,<4",
+    "sphinx-autobuild>=2024.10.3,<2027",
+]
 dev = [
     "ruff>=0.17.4",
     "ty>=0.0.100",

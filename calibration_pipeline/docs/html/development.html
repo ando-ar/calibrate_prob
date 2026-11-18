@@ -1,0 +1,156 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="ja" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ドキュメントの更新と自動ビルド &mdash; calibration-pipeline 0.1.0 ドキュメント</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/layout.css?v=82b83b0a" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1d5d09e3"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/translations.js?v=4755f45a"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="genindex.html" />
+    <link rel="search" title="検索" href="search.html" />
+    <link rel="prev" title="calibration_pipeline.source module" href="_generated/calibration_pipeline.source.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            calibration-pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">クイックスタート</a></li>
+<li class="toctree-l1"><a class="reference internal" href="guide.html">入力・出力と実行の流れ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Python API</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">ドキュメントの更新と自動ビルド</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id2">ローカルビルド</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id3">編集中の自動再ビルド</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ci">CI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id4">更新する場所</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">calibration-pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">ドキュメントの更新と自動ビルド</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="id1">
+<h1>ドキュメントの更新と自動ビルド<a class="headerlink" href="#id1" title="Link to this heading"></a></h1>
+<section id="id2">
+<h2>ローカルビルド<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">calibration_pipeline/</span></code> で実行します。DB接続や認証情報は不要です。</p>
+<div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">sync</span> <span class="p">-</span><span class="n">-locked</span> <span class="p">-</span><span class="n">-group</span> <span class="n">docs</span>
+<span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="p">-</span><span class="n">-group</span> <span class="n">docs</span> <span class="n">python</span> <span class="n">dev</span><span class="p">/</span><span class="n">build_docs</span><span class="p">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">docs/html/index.html</span></code> をブラウザーで開いて確認します。HTMLとCSS・JavaScriptもGitに保存するため、cloneした人はビルドせずに読めます。
+ビルドスクリプトはAPIページを生成し直し、警告なしで成功した場合だけ <code class="docutils literal notranslate"><span class="pre">docs/html/</span></code> を置き換えます。
+<code class="docutils literal notranslate"><span class="pre">-W</span></code> は警告を失敗として扱い、APIのimport失敗や壊れた内部参照を検出します。
+依存関係は <code class="docutils literal notranslate"><span class="pre">uv.lock</span></code> で固定し、実際のパッケージをimportしてAPIを生成します。</p>
+</section>
+<section id="id3">
+<h2>編集中の自動再ビルド<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
+<div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="p">-</span><span class="n">-group</span> <span class="n">docs</span> <span class="n">sphinx-autobuild</span> <span class="n">-E</span> <span class="n">-a</span> <span class="n">-W</span> <span class="p">-</span><span class="n">-keep-going</span> <span class="p">-</span><span class="n">-watch</span> <span class="n">src</span> <span class="p">-</span><span class="n">-watch</span> <span class="n">examples</span> <span class="p">-</span><span class="n">-ignore</span> <span class="s2">"*/_generated/*"</span> <span class="n">docs</span> <span class="n">docs</span><span class="p">/</span><span class="n">_build</span><span class="p">/</span><span class="n">html</span>
+</pre></div>
+</div>
+<p>表示されたローカルURLをブラウザーで開きます。MarkdownだけでなくPythonソースやSQL例の保存でも再ビルドします。
+生成APIページは監視から除外し、再生成のループを防ぎます。停止はCtrl+Cです。</p>
+</section>
+<section id="ci">
+<h2>CI<a class="headerlink" href="#ci" title="Link to this heading"></a></h2>
+<p>GitHub Actionsの <code class="docutils literal notranslate"><span class="pre">Documentation</span></code> はpush・pull request・手動実行でビルドします。
+ソースや設定だけの変更でも実行するため、APIの変更も追従します。
+成功したHTMLは <code class="docutils literal notranslate"><span class="pre">calibration-pipeline-docs</span></code> artifactから取得できます（保存期間14日）。
+mainへのpush・mainでの手動実行では、更新されたHTMLをbotがmainへコミットします。PRではビルドのみ行います。
+Webサイトには公開しません。mainへのbotのpushがブランチ保護で禁止されている場合は、ローカルで再生成した <code class="docutils literal notranslate"><span class="pre">docs/html/</span></code> をPRに含めてください。</p>
+</section>
+<section id="id4">
+<h2>更新する場所<a class="headerlink" href="#id4" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>利用方法は <code class="docutils literal notranslate"><span class="pre">docs/*.md</span></code>、APIの説明はソースのdocstringを編集します。</p></li>
+<li><p>引数・型注釈は実装から取得します。説明のない引数や振る舞いを自動推測する仕組みではありません。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">docs/html/</span></code> は閲覧用の生成物としてGitに含めます。手で編集せず再生成してください。<code class="docutils literal notranslate"><span class="pre">docs/_generated/</span></code> と <code class="docutils literal notranslate"><span class="pre">docs/_build/</span></code> はGitには含めません。</p></li>
+<li><p>SQL・設定例は <code class="docutils literal notranslate"><span class="pre">literalinclude</span></code> で実ファイルを掲載します。</p></li>
+<li><p>公開モジュールの追加は自動検出されます。削除・改名時は <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">dev/build_docs.py</span></code> で古いAPIページも除去できます。プレビュー用の <code class="docutils literal notranslate"><span class="pre">docs/_build/</span></code> は必要に応じて削除してください。</p></li>
+</ul>
+<p>自動生成にはSphinx標準の <a class="reference external" href="https://www.sphinx-doc.org/en/master/usage/extensions/apidoc.html">apidoc</a> と
+<a class="reference external" href="https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html">autodoc</a> を使います。</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="_generated/calibration_pipeline.source.html" class="btn btn-neutral float-left" title="calibration_pipeline.source module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

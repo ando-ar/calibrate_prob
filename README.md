@@ -10,6 +10,8 @@
 
 Pythonの依存関係は各パッケージのディレクトリで `uv sync --locked` により準備します。実行方法と検証手順は各READMEを参照してください。
 
+校正パイプラインのドキュメントは、clone後に `calibration_pipeline/docs/html/index.html` をブラウザーで開くだけで読めます。生成済みHTMLを同梱しているため、閲覧にPython環境やWebサーバーは不要です。
+
 ## Issueベースの開発
 
 1. 作業前にGitHub Issueを作り、目的・変更範囲・完了条件を記載します。

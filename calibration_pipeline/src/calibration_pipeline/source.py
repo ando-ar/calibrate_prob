@@ -57,10 +57,13 @@ def candidate_table(frame: pl.DataFrame) -> Table:
 
 
 class Source:
+    """同じSQLAlchemy接続で候補のアップロードとSQL実行を行う。"""
+
     def __init__(self, connection: Connection):
         self.connection = connection
 
     def set_seed(self, seed: int) -> None:
+        """接続のSQL乱数を0〜2147483647の整数seedで初期化する。"""
         if type(seed) is not int or not 0 <= seed <= MAX_SQL_SEED:
             raise ValueError(f"SQL seed must be an integer between 0 and {MAX_SQL_SEED}")
         if self.connection.dialect.name == "sqlite":
@@ -77,6 +80,7 @@ class Source:
             pass
 
     def upload(self, frame: pl.DataFrame):
+        """候補を接続内の一時テーブルcalibration_candidatesに格納する。"""
         table = candidate_table(frame)
         table.create(self.connection)
         insert = table.insert()
@@ -86,6 +90,11 @@ class Source:
             self.connection.execute(insert.values(batch.to_dicts()))
 
     def execute_sql(self, sql: str, params: tuple = ()) -> pl.DataFrame:
+        """SQLを実行し、結果をPolars DataFrameとして返す。
+
+        ``params`` はDBドライバー形式の位置引数としてバインドする。
+        結果表を返さないSQLではValueErrorを送出する。
+        """
         with self.connection.exec_driver_sql(
             sql, params or None, execution_options={"no_parameters": not params},
         ) as result:
@@ -95,11 +104,18 @@ class Source:
                                 orient="row", infer_schema_length=None)
 
     def execute_sql_file(self, path: Path) -> pl.DataFrame:
+        """UTF-8（BOM可）のSQLファイルを読み込み、置換せず実行する。"""
         return self.execute_sql(path.read_text(encoding="utf-8-sig"))
 
 
 @contextmanager
 def connect(*, sqlite: bool = False, sqlite_fixture: Path | None = None) -> Generator[Source]:
+    """トランザクション内のSourceを提供するコンテキストマネージャー。
+
+    SQLiteはメモリ内DBを作り、指定されたfixtureをコピーする。
+    既定のRedshiftはREDSHIFT_HOST/DATABASE/USER/PASSWORDと任意のPORTを使う。
+    コンテキストを抜けると接続とengineを解放する。
+    """
     if sqlite:
         url = URL.create("sqlite")
         options = {}

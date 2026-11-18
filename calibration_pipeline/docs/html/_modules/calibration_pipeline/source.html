@@ -1,0 +1,272 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="ja" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>calibration_pipeline.source &mdash; calibration-pipeline 0.1.0 ドキュメント</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/layout.css?v=82b83b0a" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=1d5d09e3"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../_static/translations.js?v=4755f45a"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../../genindex.html" />
+    <link rel="search" title="検索" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            calibration-pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">クイックスタート</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guide.html">入力・出力と実行の流れ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api.html">Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">ドキュメントの更新と自動ビルド</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">calibration-pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">モジュールコード</a></li>
+      <li class="breadcrumb-item active">calibration_pipeline.source</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>calibration_pipeline.source のソースコード</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Upload the candidate file and execute the user's SQL without substitutions."""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sqlite3</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Generator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">closing</span><span class="p">,</span> <span class="n">contextmanager</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sqlalchemy</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">URL</span><span class="p">,</span>
+    <span class="n">BigInteger</span><span class="p">,</span>
+    <span class="n">Boolean</span><span class="p">,</span>
+    <span class="n">Column</span><span class="p">,</span>
+    <span class="n">Connection</span><span class="p">,</span>
+    <span class="n">Date</span><span class="p">,</span>
+    <span class="n">DateTime</span><span class="p">,</span>
+    <span class="n">Double</span><span class="p">,</span>
+    <span class="n">LargeBinary</span><span class="p">,</span>
+    <span class="n">MetaData</span><span class="p">,</span>
+    <span class="n">Numeric</span><span class="p">,</span>
+    <span class="n">String</span><span class="p">,</span>
+    <span class="n">Table</span><span class="p">,</span>
+    <span class="n">create_engine</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">calibration_pipeline.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">CANDIDATE_TABLE</span>
+
+<span class="n">DEFAULT_SQL_SEED</span> <span class="o">=</span> <span class="mi">42</span>
+<span class="n">MAX_SQL_SEED</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="mi">31</span> <span class="o">-</span> <span class="mi">1</span>
+
+
+<div class="viewcode-block" id="candidate_table">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.candidate_table">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">candidate_table</span><span class="p">(</span><span class="n">frame</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Table</span><span class="p">:</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="n">frame</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">dtype</span><span class="o">.</span><span class="n">is_integer</span><span class="p">():</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">BigInteger</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">dtype</span><span class="o">.</span><span class="n">is_float</span><span class="p">():</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">Double</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Decimal</span><span class="p">):</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">Numeric</span><span class="p">(</span><span class="n">dtype</span><span class="o">.</span><span class="n">precision</span> <span class="ow">or</span> <span class="mi">38</span><span class="p">,</span> <span class="n">dtype</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">dtype</span> <span class="o">==</span> <span class="n">pl</span><span class="o">.</span><span class="n">Boolean</span><span class="p">:</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">Boolean</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">dtype</span> <span class="o">==</span> <span class="n">pl</span><span class="o">.</span><span class="n">Date</span><span class="p">:</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">Date</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Datetime</span><span class="p">):</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">DateTime</span><span class="p">(</span><span class="n">timezone</span><span class="o">=</span><span class="n">dtype</span><span class="o">.</span><span class="n">time_zone</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">dtype</span> <span class="o">==</span> <span class="n">pl</span><span class="o">.</span><span class="n">Binary</span><span class="p">:</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">LargeBinary</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">dtype</span> <span class="ow">in</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">String</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Categorical</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Enum</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Null</span><span class="p">):</span>
+            <span class="n">column_type</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="mi">65535</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"original_score: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> has an unsupported upload type: </span><span class="si">{</span><span class="n">dtype</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Column</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">column_type</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">Table</span><span class="p">(</span><span class="n">CANDIDATE_TABLE</span><span class="p">,</span> <span class="n">MetaData</span><span class="p">(),</span> <span class="o">*</span><span class="n">columns</span><span class="p">,</span> <span class="n">prefixes</span><span class="o">=</span><span class="p">[</span><span class="s2">"TEMPORARY"</span><span class="p">])</span></div>
+
+
+
+<div class="viewcode-block" id="Source">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.Source">[ドキュメント]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Source</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""同じSQLAlchemy接続で候補のアップロードとSQL実行を行う。"""</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">connection</span><span class="p">:</span> <span class="n">Connection</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection</span> <span class="o">=</span> <span class="n">connection</span>
+
+<div class="viewcode-block" id="Source.set_seed">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.Source.set_seed">[ドキュメント]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_seed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""接続のSQL乱数を0〜2147483647の整数seedで初期化する。"""</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="nb">int</span> <span class="ow">or</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">seed</span> <span class="o">&lt;=</span> <span class="n">MAX_SQL_SEED</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"SQL seed must be an integer between 0 and </span><span class="si">{</span><span class="n">MAX_SQL_SEED</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">dialect</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">"sqlite"</span><span class="p">:</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">driver_connection</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">Connection</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"Seeding SQLite requires a sqlite3 connection"</span><span class="p">)</span>
+            <span class="n">rng</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+            <span class="n">limit</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="mi">63</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">target</span><span class="o">.</span><span class="n">create_function</span><span class="p">(</span><span class="s2">"random"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="o">-</span><span class="n">limit</span><span class="p">,</span> <span class="n">limit</span><span class="p">))</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Redshift accepts a numeric literal from 0 to 1 and scales it to a 31-bit seed.</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">exec_driver_sql</span><span class="p">(</span><span class="sa">f</span><span class="s2">"SET SEED TO </span><span class="si">{</span><span class="n">seed</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">MAX_SQL_SEED</span><span class="si">:</span><span class="s2">.17f</span><span class="si">}</span><span class="s2">"</span><span class="p">):</span>
+            <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="Source.upload">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.Source.upload">[ドキュメント]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">upload</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""候補を接続内の一時テーブルcalibration_candidatesに格納する。"""</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">candidate_table</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+        <span class="n">table</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
+        <span class="n">insert</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">insert</span><span class="p">()</span>
+        <span class="n">parameter_limit</span> <span class="o">=</span> <span class="mi">900</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">dialect</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">"sqlite"</span> <span class="k">else</span> <span class="mi">30_000</span>
+        <span class="n">batch_size</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="n">parameter_limit</span> <span class="o">//</span> <span class="n">frame</span><span class="o">.</span><span class="n">width</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">frame</span><span class="o">.</span><span class="n">iter_slices</span><span class="p">(</span><span class="n">n_rows</span><span class="o">=</span><span class="n">batch_size</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">insert</span><span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">to_dicts</span><span class="p">()))</span></div>
+
+
+<div class="viewcode-block" id="Source.execute_sql">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.Source.execute_sql">[ドキュメント]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sql</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="p">())</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""SQLを実行し、結果をPolars DataFrameとして返す。</span>
+
+<span class="sd">        ``params`` はDBドライバー形式の位置引数としてバインドする。</span>
+<span class="sd">        結果表を返さないSQLではValueErrorを送出する。</span>
+<span class="sd">        """</span>
+        <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">exec_driver_sql</span><span class="p">(</span>
+            <span class="n">sql</span><span class="p">,</span> <span class="n">params</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span> <span class="n">execution_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"no_parameters"</span><span class="p">:</span> <span class="ow">not</span> <span class="n">params</span><span class="p">},</span>
+        <span class="p">)</span> <span class="k">as</span> <span class="n">result</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">returns_rows</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"SQL must return a result set"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">fetchall</span><span class="p">(),</span> <span class="n">schema</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span>
+                                <span class="n">orient</span><span class="o">=</span><span class="s2">"row"</span><span class="p">,</span> <span class="n">infer_schema_length</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Source.execute_sql_file">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.Source.execute_sql_file">[ドキュメント]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute_sql_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""UTF-8（BOM可）のSQLファイルを読み込み、置換せず実行する。"""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">execute_sql</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">))</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="connect">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.source.html#calibration_pipeline.source.connect">[ドキュメント]</a>
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">connect</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">sqlite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">sqlite_fixture</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Generator</span><span class="p">[</span><span class="n">Source</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""トランザクション内のSourceを提供するコンテキストマネージャー。</span>
+
+<span class="sd">    SQLiteはメモリ内DBを作り、指定されたfixtureをコピーする。</span>
+<span class="sd">    既定のRedshiftはREDSHIFT_HOST/DATABASE/USER/PASSWORDと任意のPORTを使う。</span>
+<span class="sd">    コンテキストを抜けると接続とengineを解放する。</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">sqlite</span><span class="p">:</span>
+        <span class="n">url</span> <span class="o">=</span> <span class="n">URL</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">"sqlite"</span><span class="p">)</span>
+        <span class="n">options</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"HOST"</span><span class="p">,</span> <span class="s2">"DATABASE"</span><span class="p">,</span> <span class="s2">"USER"</span><span class="p">,</span> <span class="s2">"PASSWORD"</span><span class="p">)</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">"REDSHIFT_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">missing</span> <span class="o">:=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"REDSHIFT_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">value</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Missing environment variables: </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">url</span> <span class="o">=</span> <span class="n">URL</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s2">"redshift+redshift_connector"</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="n">values</span><span class="p">[</span><span class="s2">"HOST"</span><span class="p">],</span> <span class="n">database</span><span class="o">=</span><span class="n">values</span><span class="p">[</span><span class="s2">"DATABASE"</span><span class="p">],</span>
+                         <span class="n">username</span><span class="o">=</span><span class="n">values</span><span class="p">[</span><span class="s2">"USER"</span><span class="p">],</span> <span class="n">password</span><span class="o">=</span><span class="n">values</span><span class="p">[</span><span class="s2">"PASSWORD"</span><span class="p">],</span>
+                         <span class="n">port</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"REDSHIFT_PORT"</span><span class="p">,</span> <span class="s2">"5439"</span><span class="p">)))</span>
+        <span class="n">options</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"ssl"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">"sslmode"</span><span class="p">:</span> <span class="s2">"verify-full"</span><span class="p">,</span> <span class="s2">"timeout"</span><span class="p">:</span> <span class="mi">60</span><span class="p">}</span>
+    <span class="n">engine</span> <span class="o">=</span> <span class="n">create_engine</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">connect_args</span><span class="o">=</span><span class="n">options</span><span class="p">,</span> <span class="n">hide_parameters</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">engine</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">sqlite</span> <span class="ow">and</span> <span class="n">sqlite_fixture</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">target</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">driver_connection</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">Connection</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"The SQLite fixture requires a sqlite3 connection"</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">sqlite3</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">sqlite_fixture</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">as_uri</span><span class="p">()</span><span class="si">}</span><span class="s2">?mode=ro"</span><span class="p">,</span> <span class="n">uri</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span> <span class="k">as</span> <span class="n">fixture</span><span class="p">:</span>
+                        <span class="n">fixture</span><span class="o">.</span><span class="n">backup</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">Error</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">sqlite_fixture</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">error</span>
+            <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">begin</span><span class="p">():</span>
+                <span class="k">yield</span> <span class="n">Source</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">engine</span><span class="o">.</span><span class="n">dispose</span><span class="p">()</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
