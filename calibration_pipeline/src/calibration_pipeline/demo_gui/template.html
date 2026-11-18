@@ -47,6 +47,28 @@
   <h1>calibration pipeline demo</h1>
   <p>紹介候補スコアの確率校正を試すデモです。ボタンを押すと本物のCLI（python -m calibration_pipeline.cli）が別プロセスで動き、完了まで待ちます。生成物は <code>experiments/demo_gui/</code> に保存されます。</p>
 </header>
+<section class="card explain" style="margin-top:16px">
+  <h2>まず何を試す？</h2>
+  <p>元スコアは順位づけには使えても、その数値が応募率とは限りません。このデモは合成の紹介履歴から「紹介後3暦月以内に応募する確率」を学び、新しい候補8件の元スコアを確率へ変換します。実在の求職者・求人データではありません。</p>
+  <ol>
+    <li>準備：DBが無ければ下の「fixtureを再生成する」で合成データを作成します。</li>
+    <li>内容確認：下のテーブル名を開き、構造・件数・データ例を確認します。</li>
+    <li>学習：experiment名（例：sqlite_oubo_demo）を入力し、初回は既定のconfig・SQLで実行します。</li>
+    <li>推論：推論タブで同じexperiment名を入力し、最新の成功runと既定の候補CSVで実行します。</li>
+    <li>結果確認：学習の評価指標・プロットと、推論の候補ごとの確率を確認します。</li>
+  </ol>
+  <p>学習はtrain区分でCatBoostを作る処理、校正は別のcalibrate区分で出力と実績率のずれをIsotonic Regressionで調整する処理です。検証は未使用のvalidation区分で評価します。この3つを「学習」ボタンで実行し、推論では保存済みモデルを新しい候補に適用します。</p>
+  <p>DBは履歴・特徴量の保管先、SQLはDBから必要な行・列を取り出す手順、configは学習に使うスコア・特徴量・ラベル・出力確率列の指定です。候補CSVは推論対象の元スコアを持ち、一時テーブル calibration_candidates として読み込まれます。これは元DBには保存されません。</p>
+  <p>詳細：<a href="/docs/quickstart.html">初回の手順</a> ／ <a href="/docs/guide.html">入力・出力と設定の利用ガイド</a></p>
+</section>
+<section id="fixture" class="card result">
+  <h2>固定fixture DBの内容確認</h2>
+  <p>閲覧・学習・推論の使用DB：<code>${fixture_path}</code></p>
+  <p>閲覧は読み取り専用です。学習・推論もこのDBをrunにコピーして使い、元DBを書き換えません。DBの選択・変更はできません。<a href="/#fixture">内容を再読み込み</a></p>
+  <p>truthは生成時の潜在確率などの検証用データ（既定の学習・推論では不使用）、eventsは合成イベント履歴、scored_referralsは学習用にID・日時・スコアを整えたビュー、user_feature_dailyは日付ごとの求職者特徴量です。user_id / item_idは求職者 / 求人ID、shoukai_dtは紹介日時、oubo_dtは応募日時、oubo_scoreは元スコア、seeker_skillは合成のスキル値、snapshot_dateは特徴量の基準日です。labelとrow_roleは学習SQLで作る列で、DBの列ではありません。</p>
+  ${fixture_preview}
+  <p><a href="/?tab=train#train">確認して学習へ進む</a> ／ <a href="/?tab=inference#inference">推論へ進む</a></p>
+</section>
 <nav>${nav}</nav>
 <p class="banner">${banner}</p>
 
@@ -54,7 +76,7 @@
   <div class="card explain">
     <h2>学習で何が起きるか</h2>
     <table>
-      <tr><th>入力</th><td>experiment名、学習config.toml（対象スコア・ラベル・確率列・特徴量・bins）、train.sql（row_role=train / calibrate / validation の3区分を1表で返す）、seed、sqlite fixture（任意）</td></tr>
+      <tr><th>入力</th><td>experiment名、学習config.toml（対象スコア・ラベル・確率列・特徴量・bins）、train.sql（row_role=train / calibrate / validation の3区分を1表で返す）、seed、固定fixture DB</td></tr>
       <tr><th>実行</th><td><code>python -m calibration_pipeline.cli train --model-name ... --sqlite ...</code></td></tr>
       <tr><th>出力</th><td><code>experiments/demo_gui/&lt;model&gt;/train/&lt;run_id&gt;/output/</code> に <code>calibration_model.pkl</code>、<code>calibration_metrics.json</code>（件数・実績率・ECE・Brier・ビン毎の予測平均と実績率）、<code>calibration_plot.svg</code>。train区分でCatBoostを学び、calibrate区分の出力にIsotonic Regressionを当て、validation区分で比較します。</td></tr>
     </table>
@@ -74,7 +96,7 @@
   <div class="card explain">
     <h2>推論で何が起きるか</h2>
     <table>
-      <tr><th>入力</th><td>experiment名、使用する学習run（最新または選択）、inference.sql（一時テーブル <code>calibration_candidates</code> から candidate_row_id・元スコア・特徴量を返す）、元スコアCSV（1行1候補）、seed、sqlite fixture（任意）</td></tr>
+      <tr><th>入力</th><td>experiment名、使用する学習run（最新または選択）、inference.sql（一時テーブル <code>calibration_candidates</code> から candidate_row_id・元スコア・特徴量を返す）、元スコアCSV（1行1候補）、seed、固定fixture DB</td></tr>
       <tr><th>実行</th><td><code>python -m calibration_pipeline.cli inference --model-name ... --sqlite ...</code></td></tr>
       <tr><th>出力</th><td><code>experiments/demo_gui/&lt;model&gt;/inference/&lt;run_id&gt;/output/</code> に <code>calibrated_score.csv</code>（入力と同じ形式・行順で、末尾に予測確率列）。推論の列契約は学習済みモデルから読み込まれるため、推論configは空またはコメントのみです。</td></tr>
     </table>
@@ -90,9 +112,15 @@
   ${inference_result}
 </section>
 
+<section class="card explain">
+  <h2>結果の読み方と保存先</h2>
+  <p>既定の推論出力 oubo_prob は0〜1の応募確率です。たとえば0.2は、似た条件の候補を集めると約20%が応募するという予測で、個々の応募を保証しません。</p>
+  <p>検証のECEは予測確率と実績率のずれ、Brier scoreは確率と0/1の結果の二乗誤差の平均で、いずれも小さいほど良好です。プロットは横軸が平均予測確率、縦軸が実績率で、対角線に近いほど整合します。ビンごとの件数も確認してください。合成データでの結果は実データでの性能を保証しません。</p>
+  <p>保存先は experiments/demo_gui/&lt;model&gt;/train または inference/&lt;run_id&gt;/output/ です。学習は calibration_model.pkl・calibration_metrics.json・calibration_plot.svg、推論は calibrated_score.csv（Parquet入力なら同形式）を保存します。各runの input/ に入力コピー、run_metadata.json に実行状態・入力ハッシュ・推論が使った学習runを記録します。</p>
+</section>
 <section class="card">
   <h2>デモデータの再生成</h2>
-  <p>fixture DBや候補CSVが無い場合・作り直したい場合に、examples/sqlite/prepare_example.py を実行して <code>examples/sqlite/</code> のデータを再生成します。</p>
+  <p>fixture DBや候補CSVが無い場合・作り直したい場合に、examples/sqlite/prepare_example.py を実行して <code>examples/sqlite/</code> のデータを再生成します。既存のfixture DB・候補CSV・manifestは置き換わります。生成後は上の内容確認に戻ってください。CLIでは calibration_pipeline/ で <code>uv run --locked python examples/sqlite/prepare_example.py</code> を実行できます。同じリポジトリの synthetic_funnel/ が必要です。</p>
   <form method="post" action="/">
     <input type="hidden" name="action" value="prepare">
     <button type="submit">fixtureを再生成する</button>

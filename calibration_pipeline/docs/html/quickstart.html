@@ -46,7 +46,12 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">クイックスタート</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#demo-gui">demo GUIで学習と推論を試す</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">初めて試す方へ</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#demo-gui">demo GUIで学習と推論を試す</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#db">デモDBの読み方</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">結果の読み方</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#sqlitecli">SQLiteでCLIから学習と推論を試す</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#redshift">Redshiftで実行する</a></li>
 </ul>
@@ -81,6 +86,17 @@
              
   <section id="id1">
 <h1>クイックスタート<a class="headerlink" href="#id1" title="Link to this heading"></a></h1>
+<section id="id2">
+<h2>初めて試す方へ<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<p>元スコアは順位を表せても、その数値が応募率とは限りません。確率校正では、予測値と実際の到達率が対応するように調整します。このデモでは合成の紹介履歴を使い、「紹介後3暦月以内の応募確率」を新しい候補8件について計算できます。実在の求職者・求人データは使いません。</p>
+<ul class="simple">
+<li><p><strong>学習</strong>：train区分で元スコアと特徴量からCatBoostを学びます。</p></li>
+<li><p><strong>校正</strong>：別のcalibrate区分でCatBoostの出力をIsotonic Regressionで調整します。</p></li>
+<li><p><strong>検証</strong>：学習・校正で使っていないvalidation区分で予測と実績を比較します。</p></li>
+<li><p><strong>推論</strong>：保存した学習済みモデルを新しい候補に適用します。再学習はしません。</p></li>
+</ul>
+<p>GUIの「学習」ボタンは学習・校正・検証をまとめて実行します。入力DBは履歴・特徴量の保管先、SQLは必要な行・列を取り出す手順、configはスコア・ラベル・特徴量・出力列の指定です。候補CSVは推論対象の元スコアを持ちます。configの各項目・列契約の詳細は<a class="reference internal" href="guide.html"><span class="std std-doc">入力・出力と実行の流れ</span></a>を参照してください。</p>
+</section>
 <section id="demo-gui">
 <h2>demo GUIで学習と推論を試す<a class="headerlink" href="#demo-gui" title="Link to this heading"></a></h2>
 <p>Python 3.11以上とuvを使います。リポジトリを取得し、<code class="docutils literal notranslate"><span class="pre">calibration_pipeline/</span></code> で実行してください。
@@ -89,10 +105,43 @@
 <span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="n">python</span> <span class="n">-m</span> <span class="n">calibration_pipeline</span><span class="p">.</span><span class="n">demo_gui</span>
 </pre></div>
 </div>
-<p>ブラウザが開きます（既定は <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8000/</span></code>）。学習タブと推論タブを切り替えられます。
-フォームはSQLite実行例で事前入力されています。初回は「fixtureを再生成する」ボタンで
-<code class="docutils literal notranslate"><span class="pre">examples/sqlite/</span></code> のデモデータを作り、そのまま「学習を実行する」を押します。
-その後、推論タブで「推論を実行する」を押すと、最新の学習runで候補の確率を計算します。</p>
+<p>ブラウザが開きます（既定は <code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8000/</span></code>）。最初に固定fixture DBの内容確認が表示され、その下に学習・推論のタブがあります。</p>
+<ol class="arabic simple">
+<li><p><strong>準備</strong>：初回は「fixtureを再生成する」でDBと候補CSVを作ります。同じリポジトリの <code class="docutils literal notranslate"><span class="pre">../synthetic_funnel/</span></code> が必要です。再生成は既存のfixture DB・候補CSV・manifestを置き換えます。</p></li>
+<li><p><strong>内容確認</strong>：使用DBの絶対パスと、各テーブル・ビューの列名・宣言型・件数・最大5行のサンプルを確認します。ビューなどの型は未宣言の場合があります。件数はSQLで学習対象を絞る前の件数です。</p></li>
+<li><p><strong>学習</strong>：experiment名に <code class="docutils literal notranslate"><span class="pre">sqlite_oubo_demo</span></code> などを入力し、初回は事前入力されたconfig・SQLで「学習を実行する」を押します。</p></li>
+<li><p><strong>推論</strong>：推論タブで同じexperiment名を入力します。既定の候補CSVと最新の成功runで「推論を実行する」を押します。</p></li>
+<li><p><strong>結果確認</strong>：学習の指標・プロットと推論の確率表を確認します。結果欄のrunディレクトリに保存ファイルがあります。</p></li>
+</ol>
+<p>GUIのDBは <code class="docutils literal notranslate"><span class="pre">examples/sqlite/train/sqlite_fixture.db</span></code> に固定され、任意のDBへの変更やfixtureなしの実行はできません。閲覧は読み取り専用で、学習・推論も同じパスのDBをrunにコピーし、メモリへ読み込んで使います。生成後は更新された内容が表示されます。外部でDBを変更した場合は「内容を再読み込み」で再確認してください。</p>
+<p>DBが無い・開けない場合は、画面の生成ボタンまたは次のコマンドを使います。読み取り権限も確認してください。生成に失敗した場合はCLI出力を開き、依存関係と <code class="docutils literal notranslate"><span class="pre">synthetic_funnel/</span></code> の配置を確認します。</p>
+<div class="highlight-powershell notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="p">-</span><span class="n">-locked</span> <span class="n">python</span> <span class="n">examples</span><span class="p">/</span><span class="n">sqlite</span><span class="p">/</span><span class="n">prepare_example</span><span class="p">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<section id="db">
+<h3>デモDBの読み方<a class="headerlink" href="#db" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>テーブル・ビュー</p></th>
+<th class="head"><p>意味・主な列</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">truth</span></code></p></td>
+<td><p>生成時の潜在確率・潜在イベント時刻などの検証用データ。既定の学習・推論SQLでは使用しません</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">events</span></code></p></td>
+<td><p>synthetic_funnelが生成した紹介・応募などの合成履歴。<code class="docutils literal notranslate"><span class="pre">legacy_apply_score</span></code> は既存モデルに相当する元スコア</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scored_referrals</span></code>（ビュー）</p></td>
+<td><p>学習用にID・日時を変換した紹介履歴。<code class="docutils literal notranslate"><span class="pre">user_id</span></code> / <code class="docutils literal notranslate"><span class="pre">item_id</span></code> は求職者 / 求人ID、<code class="docutils literal notranslate"><span class="pre">shoukai_dt</span></code> は紹介日時、<code class="docutils literal notranslate"><span class="pre">oubo_dt</span></code> は応募日時、<code class="docutils literal notranslate"><span class="pre">oubo_score</span></code> は元スコア</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">user_feature_daily</span></code></p></td>
+<td><p>日付ごとの求職者特徴量。<code class="docutils literal notranslate"><span class="pre">snapshot_date</span></code> は基準日、<code class="docutils literal notranslate"><span class="pre">seeker_skill</span></code> は合成のスキル値。推論候補分の特徴量も含む</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">label</span></code>（期限内応募なら1、そうでなければ0）と <code class="docutils literal notranslate"><span class="pre">row_role</span></code>（train / calibrate / validation）は学習SQLで作る列で、DBの保存列ではありません。候補CSVの <code class="docutils literal notranslate"><span class="pre">user_id</span></code>、<code class="docutils literal notranslate"><span class="pre">item_id</span></code>、<code class="docutils literal notranslate"><span class="pre">oubo_score</span></code>、<code class="docutils literal notranslate"><span class="pre">shoukai_dt</span></code> は推論時に一時テーブル <code class="docutils literal notranslate"><span class="pre">calibration_candidates</span></code> へ入り、特徴量との結合に使います。このテーブルは閲覧対象の元DBには保存されません。</p>
 <p>ボタンを押すと本物のCLI（<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">calibration_pipeline.cli</span></code>）が別プロセスで同期実行され、
 完了後に同じページへ次の内容が表示されます。</p>
 <table class="docutils align-default">
@@ -110,10 +159,22 @@
 </tr>
 </tbody>
 </table>
-<p>学習と推論のフォームはexperiment名（model name）・seed・config・SQL・入力ファイルを上書きできます。
+<p>学習と推論のフォームはexperiment名（model name）・seed・config・SQL・候補ファイルを変更できます。DBは固定です。
 推論では、使用する学習runを「最新」または過去の成功runから選べます（<code class="docutils literal notranslate"><span class="pre">--train-run</span></code> に相当します）。
 生成物は <code class="docutils literal notranslate"><span class="pre">experiments/demo_gui/&lt;model_name&gt;/...</span></code> に保存され、Gitの対象外です。
 入力が不正な場合はCLIのエラーメッセージがそのまま表示されます。</p>
+</section>
+<section id="id3">
+<h3>結果の読み方<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<p>既定の <code class="docutils literal notranslate"><span class="pre">oubo_prob</span></code> は0〜1の応募確率です。0.2なら、似た条件の候補を集めたときに約20%が応募するという予測で、個人の応募を保証しません。候補と同じ行順でCSVの末尾に確率列が加わります。</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">calibration_metrics.json</span></code>：検証の件数・実績率、ECE（ビン単位の予測と実績のずれ）、Brier score（確率と0/1の結果の平均二乗誤差）を確認します。両指標は小さいほど良好です。校正前後を同じ検証行で比較します。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">calibration_plot.svg</span></code>：横軸は平均予測確率、縦軸は実績率です。対角線に近いほど整合しています。ビンごとの件数も確認し、少数の行によるばらつきに注意します。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">calibration_model.pkl</span></code>：推論に使う保存モデルです。</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">calibrated_score.csv</span></code>：各候補の確率。Parquet入力なら出力もParquetです。</p></li>
+</ul>
+<p>GUIの保存先は <code class="docutils literal notranslate"><span class="pre">experiments/demo_gui/&lt;model&gt;/train/&lt;run_id&gt;/output/</span></code> と <code class="docutils literal notranslate"><span class="pre">experiments/demo_gui/&lt;model&gt;/inference/&lt;run_id&gt;/output/</span></code> です。各runの <code class="docutils literal notranslate"><span class="pre">input/</span></code> にDBを含む入力のコピー、<code class="docutils literal notranslate"><span class="pre">run_metadata.json</span></code> に状態と入力ハッシュを保存し、推論では使用した学習runも記録します。合成データでの良好な指標は実データでの性能を保証しません。</p>
+</section>
 </section>
 <section id="sqlitecli">
 <h2>SQLiteでCLIから学習と推論を試す<a class="headerlink" href="#sqlitecli" title="Link to this heading"></a></h2>
