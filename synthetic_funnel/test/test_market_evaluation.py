@@ -148,9 +148,14 @@ class EvaluatorTest(unittest.TestCase):
 
         fee_submission = self.write_submission("fee2", mode="fee")
         random_submission = self.write_submission("random2", mode="random")
+        # A tighter per-user cap makes the ranking matter: at this market density
+        # the default cap of five can admit every candidate, which would make
+        # fee and random rankings tie by construction (issue #40 RNG change).
+        tight = {"max_per_user_per_day": 2}
         with patch("synthetic_funnel.market_evaluation.simulate", side_effect=decided_simulate):
-            fee = evaluate(self.dataset, fee_submission, self.root / "out_fee2")
-            random_result = evaluate(self.dataset, random_submission, self.root / "out_random2")
+            fee = evaluate(self.dataset, fee_submission, self.root / "out_fee2", config=tight)
+            random_result = evaluate(self.dataset, random_submission, self.root / "out_random2",
+                                     config=tight)
         self.assertGreater(fee["metrics"]["macro_daily_replay_fee_yen"],
                            random_result["metrics"]["macro_daily_replay_fee_yen"])
         self.assertGreater(fee["metrics"]["macro_daily_counterfactual_fee_yen"],

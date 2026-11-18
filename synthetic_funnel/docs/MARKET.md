@@ -164,3 +164,9 @@ print(sample["population"], rows[sample["indices"]][["user", "item", "day"]])
 - 校正と評価では `mode="uniform"` で `sample_size` を指定します。抽出された `indices` と対象件数 `population` が返ります。正負を分けずに抽出するため、少数クラスの件数は標本ごとに変わります。
 - 学習では `mode="matched"` で `positive_count`（正の整数または `"all"`）と `negative_ratio`（正例1件につける負例数）を指定できます。応募の負例は同じ求職者・同じ紹介日から、通過と決定の負例は該当する分母全体から選びます。正例1件の中では負例を重複させず、別の正例間で再利用できます。`matches` には正例と負例の行インデックスの組が入ります。
 - 指定数を取れない場合は `SamplingError` が発生します。`positive_eligibility="has_matched_negatives"` を指定すると、負例が必要数ある正例に限定でき、除外した正例数は `excluded_positives` に入ります。
+
+## 生成 RNG 規律の変更（issue #40）
+
+このバージョンでは、紹介先の選択を「`seen` に対するリジェクションサンプリング」から「未紹介の残りからの直接サンプリング」へ変更し、日次の紹介プールも到着・退出時の増分更新に置き換えました。このため**市場ストリーム（`random.Random(seed)`）の消費順が 0.12.x と異なり、同じ config・seed でも生成データはバイト単位で比較できません**。スキーマと確率モデルの意味は変わらないため、data version は manifest の SHA-256 で管理してください。反実仮想の潜在ストリーム（`SeedSequence([seed, b'latent'])`）と warmup 学習のストリーム（`b'train'`）は従前どおり独立で、この変更の影響を受けません。
+
+D_train の凍結状態は `synthetic-competition freeze --manifest <dir> --output <state.pkl>` で一度保存し、`synthetic-competition evaluate ... --snapshot <state.pkl>` で再読み込みできます（状態ファイルは運営専用で参加者へ配布しません）。スナップショットには在籍アクター、`seen`、保留ケースとヒープ、アンカー、両方の RNG 状態が含まれ、読み込んだリプレイは day 0 から再シミュレーションした場合とバイト単位で同じ結果になります。

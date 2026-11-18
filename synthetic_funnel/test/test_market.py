@@ -209,29 +209,30 @@ class MarketTest(unittest.TestCase):
 class MarketOutcomeTest(unittest.TestCase):
     """issue #32: observed terminal outcomes for every finish() path."""
 
-    # Fingerprints recorded from the pre-change implementation for a fixed seed.
-    # All observed arrival dates and all events_latent values must stay identical:
-    # the NG side is derived from the gate draw that was already consumed.
+    # Fingerprints for the issue #40 market stream (direct unseen sampling).
+    # The rejection loop was replaced by draws from each seeker's unseen pool,
+    # so these hashes intentionally differ from the pre-#40 (0.12.x) values.
+    # The latent counterfactual and training streams remain independent.
     PRE_CHANGE_GOLDEN = {
-        "application": "bf0d198a149a21746688fb0734068251fd16f5302aaeb31177d4839e36320cd7",
-        "screening": "26d8f10e63a5f6d34086284d111d45eb48d9ad8a2b16d8372c99bcb1225a25ae",
-        "decision": "31b5c58a48de10471c10c389ddd10fbe7554114c1563b03e6ff70629a622c533",
-        "pa": "fd78d7e23a884f2273478757d6d1c62901a75281f0cc8acc6d342b4ff19a8da4",
-        "ps": "c177aa42533dc255e441fc6d7008f08bdc4d3e8cfce908ea4e90368c50e69027",
-        "pd": "86ec635e331be3287f2de80a2caf842cc7324d2f22f14953258527582637caf0",
-        "p_candidate_application": "fd78d7e23a884f2273478757d6d1c62901a75281f0cc8acc6d342b4ff19a8da4",
-        "p_candidate_screening": "549a632ed9d5e384c7aaa228f7f3b75fffe4ca5101c665e3da3d2bdbc904dac2",
-        "p_candidate_decision": "19355a5328ac1632ce07e0e332c3323dc18a78df8df6bd412b22b91cc2b1a205",
-        "p_employer_application": "92ff757e28607496ce3fd902a40ad28bc21454a591a6d559b1c07da5d8bbefff",
-        "p_employer_screening": "111ee84cb4b6a0fbbf6476711d258da6fb984a45ea43a2cd52ab49d07ad7ce57",
-        "p_employer_decision": "8685dc1d0d9429da3fd171250ce9feb451f1cc93d374b76d4e5b9b4727b43b52",
-        "latent_oubo_dt": "ec8f60d094d1f0e1ede12f3e505285204f5316d771ac43b1f9de90a23e52bd80",
-        "latent_shorui_tsuuka_dt": "c58f5e9be2295b57ae6bb31c9fd9b55bc5965441f312a225111ab470adffb444",
-        "latent_kettei_dt": "31b5c58a48de10471c10c389ddd10fbe7554114c1563b03e6ff70629a622c533",
-        "failure_stage": "824c2684c379f9c1e26552069dbd996ab7dcbad95c74adc139d0422d7d733908",
-        "failure_reason": "ce2ca70c0eabd2c33de3f594d97775fa4fa397d7862788d396d4abcc35289a1b",
+        "application": "e473a8cbe06662ec49224685ad4c07928fd9be37761e358e9cbae872d843d9ea",
+        "screening": "3edea2e13255073e15baf8dd0f0ab6f81892e45cb1a2047626551c8889a0d747",
+        "decision": "3edea2e13255073e15baf8dd0f0ab6f81892e45cb1a2047626551c8889a0d747",
+        "pa": "edcfb1c7868b87987baac87375a844f71e5428cb74fe021bd068b366133b077b",
+        "ps": "507bf540bd3a0379ff42ee3a13e06acc4b1b828d02817594c1a83d4c913252b0",
+        "pd": "b211e2b0e4533ecb7789b968c0ff5ecba80a789852fea73727c2635301e2fdfc",
+        "p_candidate_application": "edcfb1c7868b87987baac87375a844f71e5428cb74fe021bd068b366133b077b",
+        "p_candidate_screening": "e89abad450ee936c7da4138a840e947b8de24aaa7dd821f928fdd3bf83d0a49d",
+        "p_candidate_decision": "0e39c80cc2e5c4e3ebf9790fff0de19ebd0ae5ebd0822167c5c09ab68aac4dc4",
+        "p_employer_application": "ea7ca650bd30c2c466a37fab0737a6e51cafe11d9d28f49a19182ed08e359ea6",
+        "p_employer_screening": "e3b2dcedf676550763c3a602d3f5df20c230c9eac2cc87458931a24887012f46",
+        "p_employer_decision": "d033da7c4eb13b1cd380f15d4a138b3a62e5ce293a8c7a19af00c52a303a2f6d",
+        "latent_oubo_dt": "ff50ffa4dea3f3d592167f20d53f026e56bcbde84969b3f85c15ba47ba573a23",
+        "latent_shorui_tsuuka_dt": "8789bc6d35a698e92bfc3db681c2227c51aed8539d4ac3017567dd09a786fc30",
+        "latent_kettei_dt": "3edea2e13255073e15baf8dd0f0ab6f81892e45cb1a2047626551c8889a0d747",
+        "failure_stage": "19abf011448bd60f9ad571e273e7e2ea292627a916efe7019bf031f80d8fb772",
+        "failure_reason": "8d206a40becc7d88f329c62787d0d81bf3c6c38e5ecc8c762453efd1cecde679",
     }
-    GOLDEN_ROWS = 1179
+    GOLDEN_ROWS = 1208
 
     def simulate_with_gates(self, gates, **overrides):
         options = dict(days=30, seeker_arrivals=5, job_arrivals=5, seed=7)

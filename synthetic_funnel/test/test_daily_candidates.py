@@ -23,7 +23,9 @@ START = datetime.fromisoformat(MARKET_START)
 DAY_INDEX = 10
 DAY = (START + timedelta(days=DAY_INDEX)).isoformat()
 DAY_END = (START + timedelta(days=DAY_INDEX + 1)).isoformat()
-CONFIG = MarketConfig(days=30, seeker_arrivals=4, job_arrivals=30, seed=11, referrals=1)
+# issue #40 changed the market RNG stream (direct unseen sampling), so the seed
+# that yields in-flight applications at DAY_INDEX was re-selected.
+CONFIG = MarketConfig(days=30, seeker_arrivals=4, job_arrivals=30, seed=42, referrals=1)
 OBSERVED_COLUMNS = {
     "day_dt", "user_id", "item_id", "seeker_skill", "required_skill", "desired_salary",
     "offered_salary", "fee_rate", "fee_if_decided_yen", "wants_remote", "allows_remote",

@@ -2,6 +2,7 @@
 import copy
 import heapq
 import random
+from bisect import bisect_left, insort
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -244,8 +245,16 @@ def counterfactual(rows,day,rng):
 
 
 def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_index=None,
-             branch_seed=None, retain='all', daily_stats=None, replay=None, population=None):
+             branch_seed=None, retain='all', daily_stats=None, replay=None, population=None,
+             warm_state=None, state_days=None, stop_day=None):
     """Simulate the same market; optionally retain only observed applications.
+
+    ``warm_state`` is a full state dict captured by ``state_days`` at an earlier
+    day.  It resumes the market at ``warm_state['day'] + 1`` with the exact RNG
+    and case state of the original run, so a replay from a loaded snapshot is
+    byte-identical to a replay that re-simulates from day 0.  ``stop_day`` ends
+    the run early (used by the organiser's freeze step).  Neither option
+    changes determinism for callers that do not pass them.
 
     Retention changes storage, never introductions, random draws or outcomes.
     Fully expired daily chunks are compacted only after all their cases close.
@@ -272,35 +281,104 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
         raise ValueError('Replay requires retain=all and no resume')
     if population is not None and resume is not None:
         raise ValueError('population and resume cannot be combined')
+    if warm_state is not None and (resume is not None or replay is None):
+        raise ValueError('warm_state requires replay and no resume')
+    if stop_day is not None and (type(stop_day) is not int or stop_day<0):
+        raise ValueError('stop_day must be a nonnegative integer or None')
     population_seekers = None if population is None else population['seekers']
     population_jobs = None if population is None else population['jobs']
     if retain not in ('all','applications'):
         raise ValueError('retain must be all or applications')
     if resume is not None and retain!='all':
         raise ValueError('Future branches require retain=all')
-    rng=random.Random(config.seed if branch_seed is None else branch_seed)
+    stream_seed=config.seed if branch_seed is None else branch_seed
+    rng=random.Random(stream_seed)
     # Counterfactual draws come only from a dedicated stream, never from the market stream.
-    latent_rng=np.random.default_rng(np.random.SeedSequence(
-        [config.seed if branch_seed is None else branch_seed,LATENT_STREAM]))
-    # Profiles are mutable rows: arrival, skill, salary, occupation, region, remote,
-    # hidden motivation (column 6) and departure (column 7, NaN while the actor is
-    # still live). Item profiles carry one more column, fee_rate (column 8).
-    seekers=[] if resume is None else [list(profile) for profile in resume['seekers']]
-    jobs=[] if resume is None else [list(profile) for profile in resume['jobs']]
-    # Profile tables avoid converting the entire growing history daily.
-    seeker_table=np.empty((config.days*config.seeker_arrivals,8),dtype=object) if resume is None else None
-    job_table=np.empty((config.days*config.job_arrivals,9),dtype=object) if resume is None else None
-    live_s={} if resume is None else copy.deepcopy(resume['live_s'])
-    live_j={} if resume is None else copy.deepcopy(resume['live_j'])
-    chunks=[] if resume is None else [resume['rows'].copy()]
-    queue=[]
-    cases={}
-    next_e=0
+    latent_rng=np.random.default_rng(np.random.SeedSequence([stream_seed,LATENT_STREAM]))
+    base=ProbabilityConfig(seed=config.seed)
     daily_counts={}
     def count_transition(stage,t):
         daily_counts.setdefault(int(t),[0,0,0])[stage]+=1
-    base=ProbabilityConfig(seed=config.seed)
-    anchors=population_rates(base).intercepts if resume is None else resume['anchors']
+    if warm_state is not None:
+        # Restore the complete mutable market state, including both RNG streams,
+        # so downstream draws and case scheduling are exactly those of a run
+        # that had simulated every preceding day (issue #40 item 4).
+        if warm_state.get('seed')!=stream_seed:
+            raise ValueError('warm_state seed does not match the market stream')
+        freeze_day=int(warm_state['day'])
+        if not 0<=freeze_day<config.days:
+            raise ValueError('warm_state day is outside the configured horizon')
+        seekers=[list(profile) for profile in warm_state['seekers']]
+        jobs=[list(profile) for profile in warm_state['jobs']]
+        live_s=copy.deepcopy(warm_state['live_s'])
+        live_j=copy.deepcopy(warm_state['live_j'])
+        chunks=[chunk.copy() for chunk in warm_state['chunks']]
+        cases=dict(warm_state['cases'])
+        queue=list(warm_state['queue'])
+        heapq.heapify(queue)
+        next_e=int(warm_state['next_e'])
+        anchors=np.asarray(warm_state['anchors'])
+        daily_counts={int(k):list(v) for k,v in warm_state.get('daily_counts',{}).items()}
+        rng.setstate(warm_state['rng_state'])
+        latent_rng.bit_generator.state=warm_state['latent_state']
+        first_day=freeze_day+1
+    else:
+        first_day=0
+    # Profiles are mutable rows: arrival, skill, salary, occupation, region, remote,
+    # hidden motivation (column 6) and departure (column 7, NaN while the actor is
+    # still live). Item profiles carry one more column, fee_rate (column 8).
+    if warm_state is None:
+        seekers=[] if resume is None else [list(profile) for profile in resume['seekers']]
+        jobs=[] if resume is None else [list(profile) for profile in resume['jobs']]
+    # Profile tables avoid converting the entire growing history daily.
+    seeker_table=np.empty((config.days*config.seeker_arrivals,8),dtype=object) if resume is None else None
+    job_table=np.empty((config.days*config.job_arrivals,9),dtype=object) if resume is None else None
+    if warm_state is not None:
+        for i,profile in enumerate(seekers):seeker_table[i]=profile
+        for i,profile in enumerate(jobs):job_table[i]=profile
+    if warm_state is None:
+        live_s={} if resume is None else copy.deepcopy(resume['live_s'])
+        live_j={} if resume is None else copy.deepcopy(resume['live_j'])
+        chunks=[] if resume is None else [resume['rows'].copy()]
+        queue=[]
+        cases={}
+        next_e=0
+    anchors=(anchors if warm_state is not None else
+             (population_rates(base).intercepts if resume is None else resume['anchors']))
+    # Incremental live-job pools keyed by (occupation, region).  A remote job
+    # belongs to every region of its occupation.  Rebuilding these by scanning
+    # all live jobs every day was one of the top profile costs at 100/100
+    # arrivals; insertions and removals now maintain sorted (min_salary, jid)
+    # lists in place with bisect.
+    pool_groups={}
+    def make_live_s(until):
+        return {'until': until, 'pending': set(), 'seen': set(), 'active': 0}
+    def make_live_j(until):
+        return {'until': until, 'pending': set(), 'active': 0}
+    # `active` counts pending cases already past the application gate, i.e. the
+    # per-row other_applications / competing_candidates features.  Keeping it
+    # on each actor avoids re-summing the pending sets for every introduction.
+    for actor in live_s.values():actor.setdefault('active',0)
+    for actor in live_j.values():actor.setdefault('active',0)
+    def job_regions(job):
+        return REGIONS if job[5] else (job[4],)
+    def pool_add(jid):
+        job=jobs[jid]
+        entry=(max(100,job[2]-100),jid)
+        for region in job_regions(job):
+            insort(pool_groups.setdefault((job[3],region),[]),entry)
+    def pool_discard(jid):
+        job=jobs[jid]
+        entry=(max(100,job[2]-100),jid)
+        for region in job_regions(job):
+            group=pool_groups.get((job[3],region))
+            if not group:continue
+            pos=bisect_left(group,entry)
+            if pos<len(group) and group[pos]==entry:del group[pos]
+    if warm_state is not None and 'pool_groups' in warm_state:
+        pool_groups={key:list(entries) for key,entries in warm_state['pool_groups'].items()}
+    else:
+        for jid in live_j:pool_add(jid)
     def delay(mu,sd):
         while True:
             v=rng.gauss(mu,sd)
@@ -321,8 +399,12 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             row['status']=OUTCOME_STATUS_CODES[status]
             row['outcome_dt']=t
             row['auto']=auto
-        if sid in live_s:live_s[sid]['pending'].discard(eid)
-        if jid in live_j:live_j[jid]['pending'].discard(eid)
+        if sid in live_s and eid in live_s[sid]['pending']:
+            live_s[sid]['pending'].discard(eid)
+            if c[-1]>=1:live_s[sid]['active']-=1
+        if jid in live_j and eid in live_j[jid]['pending']:
+            live_j[jid]['pending'].discard(eid)
+            if c[-1]>=1:live_j[jid]['active']-=1
         natural(sid,t)
     def process(until):
         while queue and queue[0][0]<until:
@@ -337,6 +419,8 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 row['application']=t
                 count_transition(0,t)
                 cases[eid]=(sid,jid,chunk,offset,1)
+                if eid in live_s[sid]['pending']:live_s[sid]['active']+=1
+                if eid in live_j[jid]['pending']:live_j[jid]['active']+=1
                 heapq.heappush(queue,(t+delay(5,4),rng.random(),eid,1))
             elif stage==1:
                 if eid!=focal_eid and (u:=rng.random())>=row['ps']:
@@ -359,6 +443,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 jobs[jid][7]=t
                 s=live_s.pop(sid)
                 j=live_j.pop(jid)
+                pool_discard(jid)
                 # The hired case itself is in both pending sets; close it without a
                 # negative outcome, and record auto-cascades for the other cases.
                 for other in s['pending']:
@@ -391,14 +476,18 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             if offset==focal_index:focal_eid=eid
             cases[eid]=(sid,jid,0,offset,stage)
             live_s[sid]['pending'].add(eid);live_j[jid]['pending'].add(eid)
+            if stage>=1:
+                live_s[sid]['active']+=1;live_j[jid]['active']+=1
             heapq.heappush(queue,(origin+value,rng.random(),eid,stage))
         if focal_eid<0:raise ValueError('Focal introduction not found')
         process(resume['day']+1)
         if focal_eid not in cases:return chunks[0][focal_index].copy()
-    first_day=0 if resume is None else resume['day']+1
-    for day in range(first_day,config.days):
+    first_day=first_day if resume is None else resume['day']+1
+    last_day=config.days if stop_day is None else min(config.days,stop_day+1)
+    for day in range(first_day,last_day):
         for jid in [i for i,v in live_j.items() if v['until']<=day]:
             j=live_j.pop(jid)
+            pool_discard(jid)
             jobs[jid][7]=day
             for eid in list(j['pending']):finish(eid,day,'cancelled_posting_expiry')
         for sid in list(live_s):
@@ -420,7 +509,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 profile=list(population_seekers[sid]);profile[0]=day
             seekers.append(profile)
             if seeker_table is not None:seeker_table[sid]=seekers[-1]
-            live_s[sid]={'until': day+config.application_days,'pending': set(),'seen': set()}
+            live_s[sid]=make_live_s(day+config.application_days)
         for _ in range(config.job_arrivals):
             jid=len(jobs);skill=rng.random();salary=max(200,300+800*skill+rng.gauss(0,150))
             # salary minimum is offered minus 100, clipped to 100.
@@ -434,15 +523,16 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 profile=list(population_jobs[jid]);profile[0]=day
             jobs.append(profile)
             if job_table is not None:job_table[jid]=jobs[-1]
-            live_j[jid]={'until': day+config.posting_days,'pending': set()}
+            live_j[jid]=make_live_j(day+config.posting_days)
+            pool_add(jid)
         process(day+INTRODUCTION_OFFSET_DAYS)
         mode='builtin' if replay is None else replay.mode(day)
         selected=[]
         def add_introduction(sid,jid):
             """Build one introduction row; metadata mirrors the built-in draw exactly."""
-            s=live_s[sid]
-            other=sum(cases[e][-1]>=1 for e in s['pending'] if e in cases)
-            rivals=sum(cases[e][-1]>=1 for e in live_j[jid]['pending'] if e in cases)
+            # Incremental counters replace two per-row scans over the pending sets.
+            other=live_s[sid]['active']
+            rivals=live_j[jid]['active']
             selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals,
                              0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0,
                              0,np.nan,0,np.nan))
@@ -464,8 +554,9 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                     dep=replay.frozen_departure(kind,index)
                     if dep is not None and not dep>day:
                         continue
-                    live[index]={'until': config.days+1 if dep is None else dep,
-                                 'pending': set(),'seen': set()}
+                    until=config.days+1 if dep is None else dep
+                    live[index]=make_live_s(until) if kind=='seekers' else make_live_j(until)
+                    if kind=='jobs':pool_add(index)
                     profiles[index][7]=np.nan
                 s=live_s.get(sid)
                 reason=None
@@ -490,25 +581,23 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 add_introduction(sid,jid)
             replay.introduced[day]=[(int(r[0]),int(r[1])) for r in selected]
         else:
-            pools={}
-            for occupation in OCCUPATIONS:
-                for region in REGIONS:
-                    ids=[jid for jid in live_j if jobs[jid][3]==occupation and (jobs[jid][4]==region or jobs[jid][5])]
-                    ids.sort(key=lambda jid:max(100,jobs[jid][2]-100))
-                    pools[occupation,region]=(ids,np.array([max(100,jobs[jid][2]-100) for jid in ids]))
             for sid,s in live_s.items():
                 if s['until']<=day:continue
                 profile=seekers[sid]
-                pool,lower=pools[profile[3],profile[4]]
-                n=int(np.searchsorted(lower,profile[2],side='left'))
-                if not n:continue
-                chosen=[]
-                for _ in range(200):
-                    if len(chosen)>=min(config.referrals,n):break
-                    jid=pool[rng.randrange(n)]
-                    if jid in s['seen']:continue
-                    s['seen'].add(jid);chosen.append(jid)
-                for jid in chosen:
+                group=pool_groups.get((profile[3],profile[4]),())
+                # All entries with effective minimum salary strictly below the
+                # seeker's desired salary are eligible (the old searchsorted
+                # 'left' semantics).  Sample directly from the *unseen* prefix
+                # instead of rejection-sampling against an ever-growing `seen`
+                # set: exactly `min(referrals, len(unseen))` draws are consumed.
+                eligible=bisect_left(group,(profile[2],-1))
+                if not eligible:continue
+                unseen=[jid for _,jid in group[:eligible] if jid not in s['seen']]
+                for _ in range(min(config.referrals,len(unseen))):
+                    pos=rng.randrange(len(unseen))
+                    jid=unseen[pos]
+                    unseen[pos]=unseen[-1];unseen.pop()
+                    s['seen'].add(jid)
                     add_introduction(sid,jid)
         rows=np.array(selected,dtype=DTYPE)
         chunks.append(rows)
@@ -545,6 +634,10 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             daily_stats.append((day, len(live_s), len(live_j), len(rows), config.seeker_arrivals,
                                 config.job_arrivals, *daily_counts.pop(day, (0, 0, 0))))
         if progress and day%100==0:progress(day,len(rows))
+        if state_days is not None and day in state_days:
+            state_days[day]=make_full_state(day,seekers,jobs,live_s,live_j,chunks,cases,
+                                            queue,next_e,anchors,rng,latent_rng,
+                                            daily_counts,stream_seed,config,pool_groups)
     if resume is not None:return chunks[0][focal_index].copy()
     rows=np.concatenate(chunks)
     if retain=='applications':rows=rows[np.isfinite(rows['application'])]
@@ -570,6 +663,40 @@ def make_snapshot(day,seekers,jobs,live_s,live_j,chunks,cases,anchors):
     jj={jmap[jid]:{'until': j['until'],'pending': set()} for jid,j in live_j.items()}
     return {'day': day,'seekers': [list(seekers[i]) for i in smap],'jobs': [list(jobs[i]) for i in jmap],'live_s': ss,'live_j': jj,
                 'rows': array,'keys': keys,'anchors': anchors}
+
+
+def make_full_state(day,seekers,jobs,live_s,live_j,chunks,cases,queue,next_e,anchors,
+                    rng,latent_rng,daily_counts,seed,config,pool_groups=None):
+    """Capture the complete mutable market state at the end of a day.
+
+    Unlike :func:`make_snapshot` (a compact, index-remapped single-focal branch
+    view), this state resumes the *whole* market without re-simulating earlier
+    days.  Both RNG streams, the scheduled case heap and the live actor dicts
+    are persisted so a replay loaded from this dict is byte-identical to one
+    that started at day 0 (issue #40 item 4).  Shipped in a compact pickle by
+    ``market_evaluation --freeze``; it is never distributed to participants.
+    """
+    return {
+        'version': 1,
+        'seed': seed,
+        'signature': (config.seed, config.days, config.seeker_arrivals, config.job_arrivals,
+                      config.application_days, config.posting_days, config.referrals),
+        'day': int(day),
+        'seekers': [list(profile) for profile in seekers],
+        'jobs': [list(profile) for profile in jobs],
+        'live_s': copy.deepcopy(live_s),
+        'live_j': copy.deepcopy(live_j),
+        'chunks': [chunk.copy() for chunk in chunks],
+        'cases': dict(cases),
+        'queue': list(queue),
+        'next_e': int(next_e),
+        'anchors': np.asarray(anchors).copy(),
+        'rng_state': rng.getstate(),
+        'latent_state': latent_rng.bit_generator.state,
+        'daily_counts': {int(k): list(v) for k, v in daily_counts.items()},
+        'pool_groups': ({key: list(entries) for key, entries in pool_groups.items()}
+                        if pool_groups is not None else None),
+    }
 
 
 def labels(rows,horizon):

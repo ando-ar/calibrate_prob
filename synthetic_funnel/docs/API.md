@@ -38,8 +38,10 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 | API / CLI | 入力と返り値 |
 | --- | --- |
 | `ReplayIntroductions(eval_start, eval_end, policy)` | 外部ランキング方策。`policy` は日オフセット → `(求職者index, 求人index)` のリスト。`simulate(..., replay=...)` に渡す。 |
-| `replay_market(config, eval_start=..., eval_end=..., policy=...)` | day 0 から再シミュレーションして方策を適用し、通常の市場と同じ `(rows, seekers, jobs)` を返す。D_train の凍結状態は再シミュレーションで再現し、巨大な状態ファイルは保存しない。 |
-| `synthetic-competition evaluate --manifest <dir> --submission <file> --output <dir>` | 提出をリプレイし、`metrics.json` / `daily.csv` / `ranked.parquet` / `summary.md` を書く（`python -m synthetic_funnel.market_evaluation evaluate ...` でも可）。 |
+| `replay_market(config, eval_start=..., eval_end=..., policy=...)` | day 0 から再シミュレーションして方策を適用し、通常の市場と同じ `(rows, seekers, jobs)` を返す。 |
+| `simulate(..., state_days={day: None}, stop_day=day)` / `simulate(..., warm_state=state)` | 完全な市場状態を捕捉／再開する（issue #40）。`make_full_state()` の辞書は pickle 可能で、`warm_state` からのリプレイは day 0 からの再シミュレーションとバイト単位で同一。 |
+| `synthetic-competition freeze --manifest <dir> --output <state.pkl> [--day N]` | D_train の凍結状態を運営ディレクトリへ保存する。`--day` 省略時は候補の最も早い評価日の前日。 |
+| `synthetic-competition evaluate --manifest <dir> --submission <file> --output <dir> [--snapshot <state.pkl>]` | 提出をリプレイし、`metrics.json` / `daily.csv` / `ranked.parquet` / `summary.md` を書く（`python -m synthetic_funnel.market_evaluation evaluate ...` でも可）。`--snapshot` を付けた初回で状態を保存し、2回目以降は読み込んでウォームアップの再シミュレーションをスキップする。 |
 | `synthetic-competition evaluate-fallback --spec <runs.json> --output <dir>` | 1日評価を複数シードで実行し、主指標の平均±標準偏差を集計する。 |
 
 方策は紹介の乱数抽選だけを置き換え、ファネルの乱数ストリームは消費しない。評価日以降の arrival はデータセットのテーブルから再構成した人口スケジュールを使うため、提出の `user_id` / `item_id` はリプレイでも同じアクターを指す。詳細は [コンペ仕様](COMPETITION.md) の §5 を参照。
