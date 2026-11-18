@@ -1,0 +1,19 @@
+{
+  "model_name": "example_oubo",
+  "stage": "train",
+  "run_id": "20261118_021842",
+  "status": "succeeded",
+  "started_at": "2026-11-18T02:18:42.257400+09:00",
+  "sql_seed": 43,
+  "warehouse": {
+    "kind": "sqlite"
+  },
+  "input_sha256": {
+    "config.toml": "2fd7b338e2d7077424043c6e40ca920a2c4c42d5713d32b76dbc9e50cfe2745f",
+    "train.sql": "3d70e76e445fdd63ed75bf17e0442d5204282eafb02a9cb6866dd38082a88504",
+    "sqlite_fixture.db": "4df12479ee6bfa9b85177f443515e4037e330759fcb2c58fab720220c39656b4"
+  },
+  "score_column": "oubo_score",
+  "model_sha256": "5e5392074877bb41ea28e9ec454ecda4360777506496bcf6315a425513dcfd62",
+  "finished_at": "2026-11-18T02:18:43.653434+09:00"
+}

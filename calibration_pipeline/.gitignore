@@ -3,14 +3,14 @@
 __pycache__/
 .pytest_cache/
 dist/
-/experiments/
+/experiments/*
+!/experiments/example_oubo/
 /runs/
 /train_runs/
 /inference_runs/
 /dev/runs/
 /examples/sqlite/train/sqlite_fixture.db
 /examples/sqlite/train/synthetic_data_manifest.json
-/examples/sqlite/inference/original_score.csv
 data/
 .env
 config.local.toml
