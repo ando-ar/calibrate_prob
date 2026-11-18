@@ -1,6 +1,6 @@
 # 出力データ仕様
 
-出力は求職者マスター `user`、求人マスター `item`、参加者ごとの潜在値 `user_latent` / `item_latent`、紹介履歴 `events`、紹介ごとの潜在値 `events_latent`、日次集計 `daily` の計7テーブルです。データは[継続市場のシミュレーション](MARKET.md)だけで生成します。市場のルールと生成手順は MARKET.md を、確率の計算方法は[紹介履歴の確率モデル](PROBABILITY_MODEL.md)を参照してください。
+出力は求職者マスター `user`、求人マスター `item`、参加者ごとの潜在値 `user_latent` / `item_latent`、紹介履歴 `events`、紹介ごとの潜在値 `events_latent`、日次集計 `daily` の計7テーブルです。データは[継続市場のシミュレーション](MARKET.md)だけで生成します。市場のルールと生成手順は MARKET.md を、確率の計算方法は[紹介履歴の確率モデル](PROBABILITY_MODEL.md)、このデータから日次バッチ推論候補を作るSQLレシピは[日次バッチ推論候補](DAILY_CANDIDATES.md)を参照してください。
 
 ## 出力形式とファイル名
 
