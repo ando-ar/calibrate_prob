@@ -148,6 +148,16 @@
 <p>学習・校正の処理は <a class="reference internal" href="_generated/calibration_pipeline.pipeline.html#calibration_pipeline.pipeline.fit" title="calibration_pipeline.pipeline.fit"><code class="xref py py-func docutils literal notranslate"><span class="pre">calibration_pipeline.pipeline.fit()</span></code></a>、評価は
 <a class="reference internal" href="_generated/calibration_pipeline.evaluation.html#calibration_pipeline.evaluation.metrics" title="calibration_pipeline.evaluation.metrics"><code class="xref py py-func docutils literal notranslate"><span class="pre">calibration_pipeline.evaluation.metrics()</span></code></a> を参照してください。
 検証データで校正前後のECE・Brier score・ビンごとの確率と実績率を計算し、JSONとSVGに保存します。</p>
+<p>保存されるSVGは、横軸にビンごとの平均予測確率、縦軸に実績率を取り、
+Isotonic適用前後の2系列を対角線（理想的な校正）と並べて示します。
+例の合成データで学習したrunのプロットが次の通りです。</p>
+<figure class="align-default" id="id4">
+<a class="reference internal image-reference" href="_images/calibration_plot_example.svg"><img alt="検証データでの校正プロット。横軸が平均予測確率、縦軸が実績率で、Before isotonic と After isotonic の2系列を対角線と並べて示す。" src="_images/calibration_plot_example.svg" style="width: 480px;" />
+</a>
+<figcaption>
+<p><span class="caption-text">例のrun（<code class="docutils literal notranslate"><span class="pre">sqlite_oubo_demo</span></code>）で保存された校正プロット。点が対角線に近いほど校正されている。</span><a class="headerlink" href="#id4" title="Link to this image"></a></p>
+</figcaption>
+</figure>
 </section>
 <section id="id3">
 <h2>推論<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
