@@ -148,7 +148,7 @@
 
 リプレイの実装は後続 issue の契約である。本仕様は入出力と不変条件（同じ seed・同じ提出なら同じ結果であること、候補キーの完全一致、枠ルールの適用）を定義する。
 
-> 実装状況（issue #35）: `synthetic_funnel.market.replay_market` / `ReplayIntroductions` が完全なリプレイを提供する。D_train の凍結状態は「同じ config/seed で day 0 から再シミュレーション」することで再現し、巨大なスナップショットを保存しない（`make_snapshot` / `resume` は明示スナップショット用として残存）。RNG 規律: 方策は紹介の `rng.randrange` 抽選を置き換え、市場ストリームを消費しない。評価日以降の arrival はデータセットの `user` / `item` / `*_latent` 表から再構成した人口スケジュールを使うため、方策が紹介回数を変えても `user_id` / `item_id` とアクターの対応が崩れない。評価器は `python -m synthetic_funnel.market_evaluation evaluate` または `synthetic-competition evaluate`。
+> 実装状況（issue #35、#37 修正）: `synthetic_funnel.market.replay_market` / `ReplayIntroductions` が完全なリプレイを提供する。D_train の凍結状態は「同じ config/seed で day 0 から再シミュレーション」することで再現し、巨大なスナップショットを保存しない（`make_snapshot` / `resume` は明示スナップショット用として残存）。RNG 規律: 方策は紹介の `rng.randrange` 抽選を置き換え、市場ストリームを消費しない。評価日以降の arrival はデータセットの `user` / `item` / `*_latent` 表から再構成した人口スケジュールを使うため、方策が紹介回数を変えても `user_id` / `item_id` とアクターの対応が崩れない。参加者向けコピーには潜在表が無いため、評価器は運営側（organiser）データセットの `user_latent` / `item_latent` を人口再構成に使わなければ凍結状態が再現できない（明示指定は `--population-dir`、省略時は `--candidates-latent` の親または `participant` の兄弟 `organiser` を自動検出）。方策日は DAILY_CANDIDATES の受理集合のみを基準に紹介し、previous 日のリプレイ紹介を `seen` に加えないため、同じペアを複数日にランクしても正当に紹介される（issue #37）。評価器は `python -m synthetic_funnel.market_evaluation evaluate` または `synthetic-competition evaluate`。
 
 ### 5.3 指標の計算
 
