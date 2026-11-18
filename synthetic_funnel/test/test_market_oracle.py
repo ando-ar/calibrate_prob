@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 from scipy.integrate import quad
 from scipy.special import ndtr
-from synthetic_funnel.market import DTYPE,OCCUPATIONS,REGIONS,MarketConfig,simulate
+from synthetic_funnel.market import DTYPE,FEE_RATE_DEFAULT,OCCUPATIONS,REGIONS,MarketConfig,simulate
 
 
 class OracleTest(unittest.TestCase):
@@ -11,7 +11,7 @@ class OracleTest(unittest.TestCase):
         for k in ('application','screening','decision'):row[k]=np.nan
         row['pa']=.8;row['ps']=.7;row['pd']=.6
         snapshot=dict(day=0,seekers=[(0,.5,700,OCCUPATIONS[0],REGIONS[0],0,0,float('nan'))],
-                      jobs=[(0,.5,700,OCCUPATIONS[0],REGIONS[0],0,0,float('nan'))],
+                      jobs=[(0,.5,700,OCCUPATIONS[0],REGIONS[0],0,0,float('nan'),FEE_RATE_DEFAULT)],
                       live_s={0:dict(until=20,pending=set(),seen={0})},live_j={0:dict(until=40,pending=set())},
                       rows=row,keys=[(0,0)],anchors=(0,0,0))
         results=[]

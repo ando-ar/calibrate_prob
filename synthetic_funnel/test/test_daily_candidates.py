@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 
 from synthetic_funnel import MarketConfig, write_market_dataset
-from synthetic_funnel.market import simulate
+from synthetic_funnel.market import FEE_RATE_DEFAULT, simulate
 from synthetic_funnel.market_candidates import (
     BATCH_DAY_TABLE_SQL,
     DAILY_CANDIDATES_LATENT_SQL,
@@ -26,8 +26,8 @@ DAY_END = (START + timedelta(days=DAY_INDEX + 1)).isoformat()
 CONFIG = MarketConfig(days=30, seeker_arrivals=4, job_arrivals=30, seed=11, referrals=1)
 OBSERVED_COLUMNS = {
     "day_dt", "user_id", "item_id", "seeker_skill", "required_skill", "desired_salary",
-    "offered_salary", "wants_remote", "allows_remote", "salary_shortfall", "remote_mismatch",
-    "other_applications", "competing_candidates",
+    "offered_salary", "fee_rate", "fee_if_decided_yen", "wants_remote", "allows_remote",
+    "salary_shortfall", "remote_mismatch", "other_applications", "competing_candidates",
 }
 LATENT_COLUMNS = OBSERVED_COLUMNS | {
     "skill_match", "skill_shortfall", "overqualification", "user_motivation", "item_motivation",
@@ -85,6 +85,10 @@ class DailyCandidatesTest(unittest.TestCase):
             self.assertEqual(set(rows[0]), OBSERVED_COLUMNS)
             self.assertEqual({(row["user_id"], row["item_id"]) for row in rows}, self.expected_pool(connection))
             self.assertTrue(all(row["day_dt"] == DAY for row in rows))
+            self.assertTrue(all(row["fee_rate"] == FEE_RATE_DEFAULT for row in rows))
+            for row in rows:
+                self.assertAlmostEqual(row["fee_if_decided_yen"], row["offered_salary"] * row["fee_rate"],
+                                       places=12)
 
     def test_day_d_introductions_belong_to_pre_introduction_pool(self):
         with closing(self.connect(memory=True)) as connection:
@@ -125,9 +129,11 @@ class DailyCandidatesTest(unittest.TestCase):
                 user_skill, desired_salary = connection.execute(
                     "SELECT user_skill, desired_salary FROM user WHERE user_id = ?", (row["user_id"],)
                 ).fetchone()
-                required_skill, offered_salary = connection.execute(
-                    "SELECT required_skill, offered_salary FROM item WHERE item_id = ?", (row["item_id"],)
+                required_skill, offered_salary, fee_rate = connection.execute(
+                    "SELECT required_skill, offered_salary, fee_rate FROM item WHERE item_id = ?", (row["item_id"],)
                 ).fetchone()
+                self.assertEqual(row["fee_rate"], fee_rate)
+                self.assertAlmostEqual(row["fee_if_decided_yen"], offered_salary * fee_rate, places=12)
                 self.assertAlmostEqual(row["skill_match"], 1 - abs(user_skill - required_skill), places=12)
                 self.assertAlmostEqual(row["skill_shortfall"], max(required_skill - user_skill, 0), places=12)
                 self.assertAlmostEqual(row["overqualification"], max(user_skill - required_skill, 0), places=12)

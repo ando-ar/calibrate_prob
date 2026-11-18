@@ -7,6 +7,7 @@ from unittest.mock import patch
 import numpy as np
 
 from synthetic_funnel.market import (
+    FEE_RATE_DEFAULT,
     LATENT_DATE_FIELDS,
     OCCUPATIONS,
     OUTCOME_STATUSES,
@@ -141,7 +142,8 @@ class MarketTest(unittest.TestCase):
     def test_profile_arrays_track_departures(self):
         days=130
         r,s,j=simulate(MarketConfig(days=days,seeker_arrivals=5,job_arrivals=10))
-        self.assertEqual(s.shape[1],8);self.assertEqual(j.shape[1],8)
+        self.assertEqual(s.shape[1],8);self.assertEqual(j.shape[1],9)
+        self.assertTrue(np.all(j[:,8]==FEE_RATE_DEFAULT))
         decided=np.isfinite(r['decision'])
         # A decision removes both actors at the decision time.
         for seeker,job,t in zip(r['seeker'][decided],r['job'][decided],r['decision'][decided]):
@@ -168,6 +170,19 @@ class MarketTest(unittest.TestCase):
                     active=r[(r['seeker']==sid)&np.isfinite(r['screening'])&~np.isfinite(r['decision'])]
                     self.assertGreater(len(active),0)
             else:self.assertGreaterEqual(departure,s[sid,0]+20)
+
+    def test_fee_rate_is_uniform_and_fee_yen_is_fixed_only_at_decision(self):
+        def high_rates(config,f,*args):
+            return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
+        config=MarketConfig(days=120,seeker_arrivals=5,job_arrivals=10,seed=71)
+        with patch('synthetic_funnel.market.probability_arrays',side_effect=high_rates):
+            rows,seekers,jobs=simulate(config)
+        self.assertTrue(np.all(jobs[:,8]==FEE_RATE_DEFAULT))
+        decided=np.isfinite(rows['decision'])
+        self.assertGreater(int(decided.sum()),0)
+        expected=np.asarray(jobs[rows['job'][decided],2],dtype=float)*FEE_RATE_DEFAULT
+        np.testing.assert_allclose(np.asarray(rows['fee_yen'][decided],dtype=float),expected,rtol=0,atol=1e-12)
+        self.assertTrue(np.all(np.isnan(rows['fee_yen'][~decided])))
 
     def test_competition_counters_follow_market_density(self):
         def high_rates(config,f,*args):

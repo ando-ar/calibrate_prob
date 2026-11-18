@@ -5,7 +5,8 @@ The SQL strings here are the single source of truth for the recipe documented in
 cannot silently disagree.  ``:day`` is an ISO 8601 datetime with the same UTC
 offset as ``market_start`` (for example ``2025-01-16T00:00:00+09:00``).
 
-``candidates`` holds only observable columns.  ``candidates_latent`` is for
+``candidates`` holds only observable columns, including the item's deterministic
+``fee_rate`` and ``fee_if_decided_yen`` (issue #34).  ``candidates_latent`` is for
 organiser-side evaluation: stage one (SQL) adds the skill proxies and the fixed
 motivations, stage two (:func:`attach_latent_truth`) calls the mechanism to add
 the counterfactual probabilities, which SQL alone cannot compute.
@@ -30,6 +31,8 @@ SELECT
     i.required_skill AS required_skill,
     u.desired_salary AS desired_salary,
     i.offered_salary AS offered_salary,
+    i.fee_rate AS fee_rate,
+    i.offered_salary * i.fee_rate AS fee_if_decided_yen,
     u.wants_remote AS wants_remote,
     i.allows_remote AS allows_remote,
     MAX((u.desired_salary - i.offered_salary) / u.desired_salary, 0) AS salary_shortfall,
@@ -65,6 +68,8 @@ SELECT
     i.required_skill AS required_skill,
     u.desired_salary AS desired_salary,
     i.offered_salary AS offered_salary,
+    i.fee_rate AS fee_rate,
+    i.offered_salary * i.fee_rate AS fee_if_decided_yen,
     u.wants_remote AS wants_remote,
     i.allows_remote AS allows_remote,
     MAX((u.desired_salary - i.offered_salary) / u.desired_salary, 0) AS salary_shortfall,

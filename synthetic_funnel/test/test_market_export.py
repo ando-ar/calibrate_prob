@@ -7,13 +7,14 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import numpy as np
 import pyarrow.parquet as pq
 
 from synthetic_funnel import MarketConfig, OCCUPATIONS, REGIONS, write_market_dataset
-from synthetic_funnel.market import DTYPE, OUTCOME_STATUS_CODES, simulate
-from synthetic_funnel.market_export import EVENTS_LATENT_TABLE, EVENTS_TABLE, _event_records
+from synthetic_funnel.market import DTYPE, FEE_RATE_DEFAULT, OUTCOME_STATUS_CODES, simulate
+from synthetic_funnel.market_export import EVENTS_LATENT_TABLE, EVENTS_TABLE, ITEM_TABLE, _event_records
 
 OUTCOME_STATUSES = ('not_applied', 'ng', 'withdrawn', 'cancelled_posting_expiry',
                     'cancelled_seeker_exit', 'cancelled_market_end')
@@ -323,6 +324,54 @@ class MarketExportTest(unittest.TestCase):
             }
         self.assertEqual(parquet_outcomes, sqlite_outcomes)
         self.assertEqual(csv_outcomes, sqlite_outcomes)
+
+    def test_fee_columns_are_consistent_across_formats(self):
+        def high_rates(config,f,*args):
+            return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
+        config = MarketConfig(days=60, seeker_arrivals=4, job_arrivals=5, seed=71)
+        paths = {}
+        with patch('synthetic_funnel.market.probability_arrays',side_effect=high_rates):
+            for output_format in ("sqlite", "parquet", "csv"):
+                output = self.root / f"fees-{output_format}"
+                write_market_dataset(config, output, market_start=MARKET_START,
+                                     output_format=output_format)
+                paths[output_format] = output
+        self.assertIn("fee_rate", ITEM_TABLE.fields)
+        self.assertIn("fee_yen", EVENTS_TABLE.fields)
+        with closing(sqlite3.connect(paths["sqlite"] / "dataset.sqlite.db")) as connection:
+            item_columns = {row[1]: row[2] for row in connection.execute("PRAGMA table_info(item)")}
+            self.assertEqual(item_columns["fee_rate"], "REAL")
+            self.assertEqual(connection.execute("SELECT DISTINCT fee_rate FROM item").fetchall(),
+                             [(FEE_RATE_DEFAULT,)])
+            expected = {
+                event_id: fee for event_id, fee in connection.execute(
+                    "SELECT e.event_id, i.offered_salary * i.fee_rate "
+                    "FROM events AS e JOIN item AS i USING (item_id) "
+                    "WHERE e.kettei_dt IS NOT NULL")
+            }
+            self.assertGreater(len(expected), 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM events WHERE kettei_dt IS NOT NULL").fetchone()[0], len(expected))
+            sqlite_fees = dict(connection.execute(
+                "SELECT event_id, fee_yen FROM events WHERE fee_yen IS NOT NULL"))
+            self.assertEqual(set(sqlite_fees), set(expected))
+            for event_id, fee in expected.items():
+                self.assertAlmostEqual(sqlite_fees[event_id], fee, places=12)
+        item_parquet = pq.read_table(paths["parquet"] / "item.parquet")
+        self.assertTrue(all(rate == FEE_RATE_DEFAULT for rate in item_parquet["fee_rate"].to_pylist()))
+        parquet = pq.read_table(paths["parquet"] / "events.parquet")
+        parquet_fees = {
+            event_id: fee for event_id, fee in zip(parquet["event_id"].to_pylist(),
+                                                   parquet["fee_yen"].to_pylist(), strict=True)
+            if fee is not None
+        }
+        with (paths["csv"] / "events.csv").open(encoding="utf-8", newline="") as stream:
+            csv_fees = {row["event_id"]: float(row["fee_yen"]) for row in csv.DictReader(stream)
+                        if row["fee_yen"] != ""}
+        for fees in (parquet_fees, csv_fees):
+            self.assertEqual(set(fees), set(expected))
+            for event_id, fee in expected.items():
+                self.assertAlmostEqual(fees[event_id], fee, places=12)
 
     def test_every_status_code_maps_to_its_enum_text(self):
         count = len(OUTCOME_STATUSES)

@@ -14,10 +14,12 @@
 
 | 出力 | 用途 | 列 |
 | --- | --- | --- |
-| `candidates` | 実験・コンペ参加者向け（観測のみ） | `day_dt`、`user_id`、`item_id`、マスター属性（`seeker_skill` = `user.user_skill`、`required_skill`、`desired_salary`、`offered_salary`、`wants_remote`、`allows_remote`）、`salary_shortfall`、`remote_mismatch`、`other_applications`、`competing_candidates` |
+| `candidates` | 実験・コンペ参加者向け（観測のみ） | `day_dt`、`user_id`、`item_id`、マスター属性（`seeker_skill` = `user.user_skill`、`required_skill`、`desired_salary`、`offered_salary`、`fee_rate`、`fee_if_decided_yen`、`wants_remote`、`allows_remote`）、`salary_shortfall`、`remote_mismatch`、`other_applications`、`competing_candidates` |
 | `candidates_latent` | 運営側のモデル評価向け | `candidates` の全列 + `skill_match` / `skill_shortfall` / `overqualification`、`user_motivation` / `item_motivation`、反実仮 `p_*_eventual` / `p_candidate_*` / `p_employer_*` |
 
 `candidates` には潜在由来のスキル特徴量・モチベーション・確率を含めません。スコアモデルの入力にはマスター属性（`FEATURE_FIELDS` の `seeker_skill` など）が必要なため、これらは含めます。マスターの数値スキルは便宜上の代理値です。`candidates_latent` のスキル由来3列も同じ代理値から計算した値で、真のスキルそのものではありません。キーは `(day_dt, user_id, item_id)` で、未紹介ペアなので `event_id` はありません。
+
+`fee_rate` は `item.fee_rate`（初期値 0.33、列として保持）、`fee_if_decided_yen = offered_salary × fee_rate` は決定時に得られる手数料の観測列です（issue `#34`）。料率は全参加者共通の既知値で潜在情報ではないため、両方の `candidates` に含めます。参加者はこれと自らの順序付けから期待手数料を計算できます。
 
 ### スナップショット状態値の定義
 
@@ -34,6 +36,8 @@ SELECT
     i.required_skill AS required_skill,
     u.desired_salary AS desired_salary,
     i.offered_salary AS offered_salary,
+    i.fee_rate AS fee_rate,
+    i.offered_salary * i.fee_rate AS fee_if_decided_yen,
     u.wants_remote AS wants_remote,
     i.allows_remote AS allows_remote,
     MAX((u.desired_salary - i.offered_salary) / u.desired_salary, 0) AS salary_shortfall,
@@ -72,9 +76,9 @@ print(len(rows), rows[0])
 
 `candidate_rows` は上の SQL に `:day` をバインドして辞書のリストを返します。`synthetic_funnel.market_candidates.DAILY_CANDIDATES_SQL` が SQL の唯一の定義で、このページの SQL と同一です（テストで整合を確認します）。設定例（`seeker_arrivals=4`、`job_arrivals=30`、`referrals=1`、`seed=11`、30日）の10日目では149件です。先頭行の値は次のとおりです。
 
-| day_dt | user_id | item_id | seeker_skill | required_skill | desired_salary | offered_salary | wants_remote | allows_remote | salary_shortfall | remote_mismatch | other_applications | competing_candidates |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `2024-01-11T00:00:00+09:00` | `user-000000001` | `item-0240` | `0.5874` | `0.8426` | `817.7091` | `680.1946` | `1` | `1` | `0.1682` | `0` | `0` | `0` |
+| day_dt | user_id | item_id | seeker_skill | required_skill | desired_salary | offered_salary | fee_rate | fee_if_decided_yen | wants_remote | allows_remote | salary_shortfall | remote_mismatch | other_applications | competing_candidates |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `2024-01-11T00:00:00+09:00` | `user-000000001` | `item-0240` | `0.5874` | `0.8426` | `817.7091` | `680.1946` | `0.33` | `224.4642` | `1` | `1` | `0.1682` | `0` | `0` | `0` |
 
 ## `candidates_latent` の2段構成
 
@@ -89,6 +93,8 @@ SELECT
     i.required_skill AS required_skill,
     u.desired_salary AS desired_salary,
     i.offered_salary AS offered_salary,
+    i.fee_rate AS fee_rate,
+    i.offered_salary * i.fee_rate AS fee_if_decided_yen,
     u.wants_remote AS wants_remote,
     i.allows_remote AS allows_remote,
     MAX((u.desired_salary - i.offered_salary) / u.desired_salary, 0) AS salary_shortfall,
@@ -152,6 +158,8 @@ SELECT
     i.required_skill AS required_skill,
     u.desired_salary AS desired_salary,
     i.offered_salary AS offered_salary,
+    i.fee_rate AS fee_rate,
+    i.offered_salary * i.fee_rate AS fee_if_decided_yen,
     u.wants_remote AS wants_remote,
     i.allows_remote AS allows_remote,
     MAX((u.desired_salary - i.offered_salary) / u.desired_salary, 0) AS salary_shortfall,

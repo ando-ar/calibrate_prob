@@ -58,7 +58,8 @@ JOIN item_latent AS il USING (item_id)
 | `item_id` | TEXT | なし（主キー） | 求人のID。 | `item-0007` |
 | `arrival_dt` | TEXT | なし | 市場への参加（掲載開始）日時。 | `2025-01-06T00:00:00+09:00` |
 | `required_skill` | REAL | なし | 要求スキル。0〜1。 | `0.55` |
-| `offered_salary` | REAL | なし | 提示給与。正の実数。 | `900.0` |
+| `offered_salary` | REAL | なし | 提示給与。正の実数。現行の `max(200, 300 + 800 × required_skill + noise)`。ノイズ導入・ロジック再設計は将来課題（issue #34）。 | `900.0` |
+| `fee_rate` | REAL | なし | 配置手数料率（issue #34）。初期値は全求人で一律 0.33 だが、将来の率変更に備えて列として保持する。 | `0.33` |
 | `occupation` | TEXT | なし | 職種。8種類の日本語の値のいずれか（下記）。 | `エンジニア` |
 | `region` | TEXT | なし | 勤務地。8種類の日本語の値のいずれか（下記）。 | `東京` |
 | `allows_remote` | INTEGER | なし | リモート可否。1=可、0=不可。 | `0` |
@@ -104,6 +105,7 @@ JOIN item_latent AS il USING (item_id)
 | `oubo_dt` | TEXT | 未到達ならNULL | 観測された応募日時。 | `2025-01-08T10:26:00+09:00` |
 | `shorui_tsuuka_dt` | TEXT | 未到達ならNULL | 観測された書類通過日時。 | NULL |
 | `kettei_dt` | TEXT | 未到達ならNULL | 観測された決定（採用）日時。取消結果とは排他。 | NULL |
+| `fee_yen` | REAL | `kettei_dt` がNULLならNULL | 決定時に確定した最終手数料（issue #34）。`item.fee_rate × item.offered_salary`。決定に至らなかった行は 0 ではなくNULL。 | `297.0` |
 | `status` | TEXT | 終端結果が未観測ならNULL | 観測された終端結果。`not_applied` / `ng` / `withdrawn` / `cancelled_posting_expiry` / `cancelled_seeker_exit` / `cancelled_market_end` のいずれか。採用行はNULL。 | `ng` |
 | `outcome_dt` | TEXT | `status` と同じ | 終端結果が観測された時刻（`market_start` からのオフセットを日時文字列化）。 | `2025-02-03T09:12:00+09:00` |
 | `auto` | INTEGER | なし（常に0または1） | 1=採用成立による自動連鎖（自動NG／自動辞退）、0=それ以外。`status` が `ng` / `withdrawn` のときだけ意味を持ち、それ以外の行では常に0。 | `0` |
@@ -122,6 +124,12 @@ JOIN item_latent AS il USING (item_id)
 `not_applied` は応募の抽選（紹介時点のゲート）に失敗して応募に至らなかった行に付きます。`cancelled_posting_expiry` は求人の掲載期限満了、`cancelled_seeker_exit` は求職者の応募可能期間満了、`cancelled_market_end` は相手が既に市場から退出していた場合の安全網です。観測締切時点でまだ終端していない行は打切りとして扱い、`status` / `outcome_dt` はNULLのままです。
 
 `status` / `outcome_dt` / `auto` は紹介後に確定する情報でリークになるため、**学習特徴量として使用禁止**です。`kettei_dt` の採用ラベルと3暦月の成熟度判定は従来どおりです。
+
+### 手数料列と日次候補（issue #34）
+
+手数料は確定的な属性値で、潜在値や確率ではありません。`item.fee_rate` は全求人に一律 0.33 ですが列として保持し、`events.fee_yen` は決定（採用）した紹介にだけ `item.fee_rate × item.offered_salary` を記録します。未決定の行の `fee_yen` は NULL で、金額不明の行を暗黙の 0 として数えません。提示給与の生成ロジックは現行のルールベースのままで、ノイズ追加などの再設計は将来課題です。
+
+日次候補 `candidates` / `candidates_latent` にも、観測列として `fee_rate` と `fee_if_decided_yen = offered_salary × fee_rate` が入ります（SQL レシピは[日次バッチ推論候補](DAILY_CANDIDATES.md)を参照）。料率は全参加者共通の既知値なので潜在情報ではなく、参加者はこの列から期待手数料を計算できます。
 
 ## `events_latent` 潜在値（反実仮の真値）
 

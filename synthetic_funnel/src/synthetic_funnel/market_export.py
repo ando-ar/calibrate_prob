@@ -11,6 +11,7 @@ from pathlib import Path
 from .export import BATCH_SIZE, Table, dataset_staging, write_rows
 from .market import (
     FAILURE_REASONS,
+    FEE_RATE_DEFAULT,
     INTRODUCTION_OFFSET_DAYS,
     OUTCOME_STATUSES,
     MarketConfig,
@@ -38,7 +39,7 @@ USER_LATENT_TABLE = Table(
     (("user_id", USER_TABLE.name, USER_TABLE.key),),
 )
 ITEM_TABLE = Table(
-    "item", ("item_id", "arrival_dt", "required_skill", "offered_salary", "occupation", "region",
+    "item", ("item_id", "arrival_dt", "required_skill", "offered_salary", "fee_rate", "occupation", "region",
              "allows_remote", "departure_dt"), "item_id",
 )
 ITEM_LATENT_TABLE = Table(
@@ -50,7 +51,7 @@ DAILY_TABLE = Table("daily", ("day_dt", "live_users", "live_items", "referrals",
 EVENTS_TABLE = Table(
     "events", ("event_id", "user_id", "item_id", "salary_shortfall", "remote_mismatch",
                "other_applications", "competing_candidates", *MODEL_SCORE_FIELDS, "shoukai_dt",
-               *DATE_COLUMNS, "status", "outcome_dt", "auto"),
+               *DATE_COLUMNS, "fee_yen", "status", "outcome_dt", "auto"),
     "event_id",
     (("user_id", USER_TABLE.name, USER_TABLE.key), ("item_id", ITEM_TABLE.name, ITEM_TABLE.key)),
 )
@@ -80,12 +81,15 @@ def _item_id(index: int):
 
 def _profile_records(table, profiles, start, make_id):
     # The motivation offset lives in a dedicated latent table, not in the master.
-    for index, (arrival, skill, salary, occupation, region, remote, _motivation, departure) in enumerate(profiles):
-        yield dict(zip(table.fields, (
-            make_id(index), _datetime_at(start, float(arrival)), float(skill), float(salary),
-            str(occupation), str(region), int(remote),
-            None if not math.isfinite(departure) else _datetime_at(start, float(departure)),
-        ), strict=True))
+    # Item profiles carry one extra column, fee_rate (issue #34); user profiles do not.
+    for index, profile in enumerate(profiles):
+        arrival, skill, salary, occupation, region, remote, _motivation, departure = profile[:8]
+        values = [make_id(index), _datetime_at(start, float(arrival)), float(skill), float(salary)]
+        if "fee_rate" in table.fields:
+            values.append(float(profile[8]) if len(profile) > 8 else FEE_RATE_DEFAULT)
+        values.extend((str(occupation), str(region), int(remote),
+                       None if not math.isfinite(departure) else _datetime_at(start, float(departure))))
+        yield dict(zip(table.fields, values, strict=True))
 
 
 def _latent_profile_records(table, profiles, make_id):
@@ -114,6 +118,10 @@ def _event_records(rows, seekers, jobs, start, scores, progress):
             for field, stage in zip(DATE_COLUMNS, STAGES, strict=True):
                 value = float(row[stage])
                 event[field] = _datetime_at(start, value) if math.isfinite(value) else None
+            # Fee is fixed at decision in simulate(); undecided rows stay NULL rather
+            # than being silently counted as zero (issue #34).
+            fee = float(row['fee_yen'])
+            event['fee_yen'] = fee if event['kettei_dt'] is not None and math.isfinite(fee) else None
             # Observed terminal outcome (issue #32): status and outcome_dt are NULL
             # together for hired, in-flight and observation-end-censored rows, and
             # never coexist with kettei_dt. auto only applies to ng/withdrawn cascades.

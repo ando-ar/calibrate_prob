@@ -8,6 +8,7 @@
 - 求職者の応募可能期間は `application_days`（既定20日）、求人の掲載期間は `posting_days`（既定40日）です。
 - 紹介は求職者1人につき1日最大 `referrals` 件（既定5件、上限5）です。職種が一致し、希望給与が求人レンジの下限を上回り、勤務地が一致するか全国リモート可のペアを抽出します。職種と勤務地は8種類の日本語のTEXT値（`occupation`: `エンジニア` / `営業` / `事務` / `デザイン` / `マーケティング` / `介護` / `販売` / `製造`、`region`: `東京` / `大阪` / `名古屋` / `福岡` / `札幌` / `仙台` / `広島` / `沖縄`）です。同じ求職者と求人の組み合わせは再紹介しません。
 - 決定すると双方が退出し、関連する選考が終了します。求職者は応募可能期間後に進行中の選考が終わると退出します。求人は掲載期限でも退出します。参加者の退出理由はマスターに保存せず、退出日時だけを `user.departure_dt` と `item.departure_dt` に記録します。紹介ごとの取消結果は `events.status` / `outcome_dt` / `auto` に記録します（下記）。
+- 配置手数料（issue `#34`）：求人ごとに `item.fee_rate`（初期値は一律 0.33 だが列として保持）を持ち、決定した紹介に限り `events.fee_yen = item.fee_rate × item.offered_salary` を確定します。手数料は確定的な属性で、確率・潜在値ではありません。乱数を追加消費しないため、同じ seed の到達日時・確率はビット単位で不変です。提示給与のノイズ追加・生成ロジック再設計は将来課題です。
 - 観測された到達（`events` の日時列）は、市場の退出や掲載期限、観測締切の影響を受けます。これらの影響を無視した反実仮の真値は `events_latent` に保存します。紹介時点の `p_*_eventual` は紹介時点の他社応募件数と他候補者数を含めて計算します。
 
 ### 取消結果の観測（issue #32）
@@ -82,10 +83,10 @@ SQLite では `runs/<実行ディレクトリ>/output/dataset.sqlite.db` に次�
 | テーブル | 1行の単位とキー | 主な内容 |
 | --- | --- | --- |
 | `user` | 求職者の1参加。`user_id` | 参加日時、スキル、希望給与、職種（`occupation`、TEXT・8種類）、地域（`region`、TEXT・8種類）、リモート希望、退出日時。値の一覧は[出力データ仕様](DATA_FORMAT.md)を参照。 |
-| `item` | 求人の1掲載。`item_id` | 参加日時、要求スキル、提示給与、職種（`occupation`、TEXT・8種類）、地域（`region`、TEXT・8種類）、リモート可否、退出日時。値の一覧は[出力データ仕様](DATA_FORMAT.md)を参照。 |
+| `item` | 求人の1掲載。`item_id` | 参加日時、要求スキル、提示給与、手数料率（`fee_rate`、初期値 0.33）、職種（`occupation`、TEXT・8種類）、地域（`region`、TEXT・8種類）、リモート可否、退出日時。値の一覧は[出力データ仕様](DATA_FORMAT.md)を参照。 |
 | `user_latent` | 求職者の1参加。`user_id` で `user` と1対1 | 参加時に決まり在籍中は不変の隠れた意欲 `user_motivation`。各段階で求職者側のロジットに足される。 |
 | `item_latent` | 求人の1掲載。`item_id` で `item` と1対1 | 参加時に決まり掲載中は不変の隠れた意欲 `item_motivation`。各段階で企業側のロジットに足される。 |
-| `events` | 紹介1件。`event_id` | ユーザと求人のID、計算可能な派生特徴量（`salary_shortfall` / `remote_mismatch` / `other_applications` / `competing_candidates`）、3つの `model_*_score`、紹介および観測された到達日時、観測された終端結果（`status` / `outcome_dt` / `auto`）。スキル由来の3特徴量は `events_latent` に移した。 |
+| `events` | 紹介1件。`event_id` | ユーザと求人のID、計算可能な派生特徴量（`salary_shortfall` / `remote_mismatch` / `other_applications` / `competing_candidates`）、3つの `model_*_score`、紹介および観測された到達日時、決定行の手数料 `fee_yen`、観測された終端結果（`status` / `outcome_dt` / `auto`）。スキル由来の3特徴量は `events_latent` に移した。 |
 | `events_latent` | 紹介1件。`event_id` で `events` と1対1 | スキル由来の派生特徴量 `skill_match` / `skill_shortfall` / `overqualification`（真のスキルは数値で表せず、マスターの数値スキルは便宜上の代理値）、退出や打切りを無視した各段階の条件付き確率 `p_*_eventual`、片側確率 `p_candidate_*` / `p_employer_*`、応募・通過確率の差、潜在到達日時、失敗段階と理由。参加者の意欲は含めず、`events` から `user` / `item` を経由して `user_latent` / `item_latent` を結合する。 |
 | `daily` | 市場の1日。`day_dt` | 日末の在籍数、当日の流入・紹介・到達件数。 |
 

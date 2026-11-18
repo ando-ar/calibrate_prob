@@ -24,10 +24,15 @@ LATENT_STREAM=0x6C6174656E74  # b'latent'; seeds the counterfactual stream apart
 OUTCOME_STATUSES=('not_applied','ng','withdrawn','cancelled_posting_expiry',
                   'cancelled_seeker_exit','cancelled_market_end')
 OUTCOME_STATUS_CODES={name:index+1 for index,name in enumerate(OUTCOME_STATUSES)}
+# Item-side placement fee rate. Uniform today, but stored as a profile column so a
+# future per-item/per-market rate needs no schema change (issue #34). No RNG draw:
+# the fee is deterministic from already generated attributes.
+FEE_RATE_DEFAULT=0.33
 DTYPE=np.dtype([(k,'i4') for k in ('seeker','job','day')]+[(k,'f8') for k in ('application','screening','decision','pa','ps','pd')]+[(k,'i2') for k in ('other_applications','competing_candidates')]
                +[(k,'f8') for k in (*LATENT_CANDIDATE_FIELDS,*LATENT_EMPLOYER_FIELDS,*LATENT_DATE_FIELDS)]
                +[('failure_stage','i2'),('failure_reason','i2')]
-               +[('status','i2'),('outcome_dt','f8'),('auto','i2')])
+               +[('status','i2'),('outcome_dt','f8'),('auto','i2')]
+               +[('fee_yen','f8')])
 INTRODUCTION_OFFSET_DAYS = 0.01
 
 
@@ -82,6 +87,8 @@ class MarketConfig:
 
 
 NUMERIC_COLUMNS=(0,1,2,5,6)  # arrival, skill, salary, remote flag, hidden motivation (categories are columns 3 and 4)
+# Item profiles additionally carry fee_rate in column 8. It is deliberately not a
+# model feature: the fee is a deterministic attribute, never a latent value.
 
 
 def numeric_profiles(profiles,indices):
@@ -154,13 +161,14 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     # Counterfactual draws come only from a dedicated stream, never from the market stream.
     latent_rng=np.random.default_rng(np.random.SeedSequence(
         [config.seed if branch_seed is None else branch_seed,LATENT_STREAM]))
-    # Profiles are mutable 8-column rows: arrival, skill, salary, occupation, region, remote,
-    # hidden motivation (column 6) and departure (column 7, NaN while the actor is still live).
+    # Profiles are mutable rows: arrival, skill, salary, occupation, region, remote,
+    # hidden motivation (column 6) and departure (column 7, NaN while the actor is
+    # still live). Item profiles carry one more column, fee_rate (column 8).
     seekers=[] if resume is None else [list(profile) for profile in resume['seekers']]
     jobs=[] if resume is None else [list(profile) for profile in resume['jobs']]
     # Profile tables avoid converting the entire growing history daily.
     seeker_table=np.empty((config.days*config.seeker_arrivals,8),dtype=object) if resume is None else None
-    job_table=np.empty((config.days*config.job_arrivals,8),dtype=object) if resume is None else None
+    job_table=np.empty((config.days*config.job_arrivals,9),dtype=object) if resume is None else None
     live_s={} if resume is None else copy.deepcopy(resume['live_s'])
     live_j={} if resume is None else copy.deepcopy(resume['live_j'])
     chunks=[] if resume is None else [resume['rows'].copy()]
@@ -222,6 +230,9 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                     finish(eid,t,observed_failure_status(u,row['pd'],row['p_employer_decision']))
                     continue
                 row['decision']=t
+                # Fee is fixed at the decision from the item's rate and offered salary.
+                # Deterministic: no draw, so the market stream stays bit-identical.
+                row['fee_yen']=float(jobs[jid][2])*float(jobs[jid][8])
                 count_transition(2,t)
                 seekers[sid][7]=t
                 jobs[jid][7]=t
@@ -285,7 +296,9 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
         for _ in range(config.job_arrivals):
             jid=len(jobs);skill=rng.random();salary=max(200,300+800*skill+rng.gauss(0,150))
             # salary minimum is offered minus 100, clipped to 100.
-            jobs.append([day,skill,salary,rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
+            # TODO(issue #34 follow-up): redesign offered_salary with extra noise so it
+            # is not trivially recoverable from skill; this issue keeps the current rule.
+            jobs.append([day,skill,salary,rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan,FEE_RATE_DEFAULT])
             if job_table is not None:job_table[jid]=jobs[-1]
             live_j[jid]={'until': day+config.posting_days,'pending': set()}
         process(day+INTRODUCTION_OFFSET_DAYS)
@@ -313,7 +326,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 rivals=sum(cases[e][-1]>=1 for e in live_j[jid]['pending'] if e in cases)
                 selected.append((sid,jid,day,np.nan,np.nan,np.nan,0.,0.,0.,other,rivals,
                                  0.,0.,0.,0.,0.,0.,np.nan,np.nan,np.nan,0,0,
-                                 0,np.nan,0))
+                                 0,np.nan,0,np.nan))
         rows=np.array(selected,dtype=DTYPE)
         chunks.append(rows)
         if len(rows):
@@ -352,7 +365,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     if resume is not None:return chunks[0][focal_index].copy()
     rows=np.concatenate(chunks)
     if retain=='applications':rows=rows[np.isfinite(rows['application'])]
-    return rows, np.asarray(seekers,dtype=object).reshape(-1, 8), np.asarray(jobs,dtype=object).reshape(-1, 8)
+    return rows, np.asarray(seekers,dtype=object).reshape(-1, 8), np.asarray(jobs,dtype=object).reshape(-1, 9)
 
 
 def make_snapshot(day,seekers,jobs,live_s,live_j,chunks,cases,anchors):
