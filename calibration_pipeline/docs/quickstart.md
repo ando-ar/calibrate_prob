@@ -24,8 +24,8 @@ uv run --locked python -m calibration_pipeline.demo_gui
 
 ブラウザが開きます（既定は `http://127.0.0.1:8000/`）。最初に固定fixture DBの内容確認が表示され、その下に学習・推論のタブがあります。
 
-1. **準備**：GitHub Actionsの `calibration-pipeline-fixture` artifact（保持期間14日）を `examples/sqlite/` に展開してDBと候補CSVを用意します（[取得方法](https://github.com/ando-ar/calibrate_prob/blob/main/calibration_pipeline/examples/sqlite/README.md)）。CLIでローカル生成する場合は `uv run --locked python examples/sqlite/prepare_example.py` を実行します（同じリポジトリの `../synthetic_funnel/` が必要です。小さな通常モードで `legacy_models.json` を作り、市場モードでDBを生成します）。
-2. **内容確認**：使用DBの絶対パスと、各テーブル・ビューの列名・宣言型・件数・最大5行のサンプルを確認します。ビューなどの型は未宣言の場合があります。件数はSQLで学習対象を絞る前の件数です。
+1. **準備**：GitHub Actionsの `calibration-pipeline-fixture` artifact（保持期間14日）を `examples/sqlite/` に展開してDBと候補CSVを用意します（[取得方法](https://github.com/ando-ar/calibrate_prob/blob/main/calibration_pipeline/examples/sqlite/README.md)）。CLIでローカル生成する場合は `uv run --locked python examples/sqlite/prepare_example.py` を実行します（同じリポジトリの `../synthetic_funnel/` が必要です。市場専用CLIを1回呼び、市場内warmupで学習したモデル付きのDBを生成します）。
+2. **内容確認**：使用DBの絶対パスと、各テーブル・ビューの列名・宣言型・件数・最大5行のサンプルを確認します。ビューなどの型は未宣言の場合があります。件数はSQLで学習対象を絞る前の件数です。warmup期間の紹介は `model_*_score` が `NULL` で、`scored_referrals` ビューには含まれません。
 3. **学習**：experiment名に `sqlite_oubo_demo` などを入力し、初回は事前入力されたconfig・SQLで「学習を実行する」を押します。
 4. **推論**：推論タブで同じexperiment名を入力します。既定の候補CSVと最新の成功runで「推論を実行する」を押します。
 5. **結果確認**：学習の指標・プロットと推論の確率表を確認します。結果欄のrunディレクトリに保存ファイルがあります。
@@ -43,10 +43,11 @@ uv run --locked python examples/sqlite/prepare_example.py
 | テーブル・ビュー | 意味・主な列 |
 | --- | --- |
 | `user` / `item` | 求職者・求人のマスター。参加時に決まり在籍中は不変の属性（`user_skill` / `occupation` など）を持ちます |
-| `events` | synthetic_funnelが生成した紹介ごとの観測履歴。`model_apply_score` は既存モデルに相当する元スコア。属性列はマスターへ分離済み |
+| `user_latent` / `item_latent` | 参加時に決まり在籍中は不変の隠れた意欲。既存の学習・推論SQLでは使用しません |
+| `events` | synthetic_funnelが生成した紹介ごとの観測履歴。`model_apply_score` は市場内warmupで学習したモデルの元スコア（warmup中は `NULL`）。属性列はマスターへ分離済み |
 | `events_latent` | 生成時の潜在確率・潜在イベント時刻などの検証用データ。既定の学習・推論SQLでは使用しません |
 | `daily` | 市場の日次集計。既定の学習・推論SQLでは使用しません |
-| `scored_referrals`（ビュー） | 学習用にID・日時を変換した紹介履歴。`user_id` / `item_id` は整数化したID、`shoukai_dt` は紹介日時、`oubo_dt` は応募日時、`model_apply_score` は元スコア。属性は `user` マスターをJOINして取得します |
+| `scored_referrals`（ビュー） | 学習用にID・日時を変換した紹介履歴。`user_id` / `item_id` は整数化したID、`shoukai_dt` は紹介日時、`oubo_dt` は応募日時、`model_apply_score` は元スコア。属性は `user` マスターをJOINして取得し、`model_apply_score IS NOT NULL` でwarmup中のスコア欠損行を除外します |
 | `user_feature_daily` | 紹介日ごとの求職者特徴量。`snapshot_date` は基準日、`seeker_skill` は `user.user_skill`、`occupation` は `user.occupation` 由来。推論候補分の特徴量も含みます |
 
 `label`（期限内応募なら1、そうでなければ0）と `row_role`（train / calibrate / validation）は学習SQLで作る列で、DBの保存列ではありません。候補CSVの `user_id`、`item_id`、`model_apply_score`、`shoukai_dt` は推論時に一時テーブル `calibration_candidates` へ入り、特徴量との結合に使います。このテーブルは閲覧対象の元DBには保存されません。

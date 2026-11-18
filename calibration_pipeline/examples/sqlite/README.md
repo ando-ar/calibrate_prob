@@ -1,6 +1,6 @@
 # SQLiteで学習と推論を試す
 
-`calibration_pipeline/` で実行します。fixture生成スクリプトは、隣の `../synthetic_funnel/` のCLIを2段階で呼びます。まず小さな通常モードのrunで `legacy_models.json` を作り、そのモデルを使う市場モードのrunから `user` / `item` / `events` / `events_latent` / `daily` を持つSQLite DBを出力します。学習・校正・検証に用いるDBを `examples/sqlite/train/sqlite_fixture.db`、市場の最後の紹介8件を元にした候補CSVを `examples/sqlite/inference/original_score.csv` に書き出します。別の場所にある生成器は `--generator-root` で指定できます。
+`calibration_pipeline/` で実行します。fixture生成スクリプトは、隣の `../synthetic_funnel/` の市場専用CLIを1回だけ呼びます。市場は開始から `warmup` 日間の紹介履歴で3段階のモデルを学習し、以降の紹介に `model_apply_score` などを付けます。`user` / `item` / `user_latent` / `item_latent` / `events` / `events_latent` / `daily` の7表を持つSQLite DBを出力し、学習・校正・検証に用いるDBを `examples/sqlite/train/sqlite_fixture.db`、市場の最後の紹介8件を元にした候補CSVを `examples/sqlite/inference/original_score.csv` に書き出します。別の場所にある生成器は `--generator-root` で指定できます。
 
 ```powershell
 uv sync --locked
@@ -13,7 +13,7 @@ uv run --locked calibration-pipeline inference --model-name sqlite_oubo_demo --s
 
 同じコマンドを繰り返すと、新しいrunが作られます。推論が使用した学習run IDは推論の `run_metadata.json` に記録します。特定の学習runを使うには、推論コマンドに `--train-run <run_id>` を付けます。
 
-学習データは、紹介から共通3暦月以内の応募を判定します。学習区分は2024-02〜04月、校正は2024-05〜07月、検証は2024-08〜10月の紹介を使い、各観測締切を満たした行だけを対象にします。ウォームアップ中のスコア欠損行（将来の市場専用CLIで作られる `NULL`）は学習から除外します。SQLはSQLite用の例です。
+学習データは、紹介から共通3暦月以内の応募を判定します。学習区分は2025-02-04〜03-05、校正は2025-03-06〜04-04、検証は2025-04-05〜05-04の紹介を使い、各観測締切を満たした行だけを対象にします。**warmup期間中（`warmup_end` より前）の紹介は `model_*_score` が `NULL` なので、元スコアで学習できない**点に注意してください。`scored_referrals` ビューと学習SQLの両方で `model_apply_score IS NOT NULL` により明示的に除外しています。SQLはSQLite用の例です。
 
 - [train/config.toml](train/config.toml) と [train/train.sql](train/train.sql)
 - [inference/config.toml](inference/config.toml) と [inference/inference.sql](inference/inference.sql)
@@ -30,17 +30,14 @@ uv sync --locked
 uv run --locked python examples/sqlite/prepare_example.py
 ```
 
-スクリプトは `synthetic_funnel/` のCLIを次の2段階で呼びます（`--generator-root` で生成器の場所を変更できます）。
+スクリプトは `synthetic_funnel/` の市場専用CLIを1回だけ呼びます（`--generator-root` で生成器の場所を変更できます）。
 
 ```powershell
-# 1) 小さな通常モードのrun（rows=800、legacy_scores有効）から legacy_models.json を作る
 cd ../synthetic_funnel
-uv run --locked python -m synthetic_funnel --run-dir <一時dir>/history --format sqlite
-# 2) 市場モード（days=500、流入8件/日、紹介1件/日/人、application_days=6、posting_days=12）
-uv run --locked python -m synthetic_funnel --market --run-dir <一時dir>/market --format sqlite
+uv run --locked python -m synthetic_funnel --run-dir <一時dir>/market --format sqlite
 ```
 
-各runの `input/config.json` は `prepare_example.py` の `HISTORY_CONFIG` / `MARKET_CONFIG` から作られ、市場設定の `legacy_models` には手順1のモデルへのパスが入ります。市場の `output/dataset.sqlite.db` に `schema.sql` のビュー・派生テーブルを追加したものがfixtureです。候補CSVの `model_apply_score` は市場の最後の紹介8件のスコアです。将来、市場専用CLIへ切り替えるときは `run_generator()` と上記の設定だけを差し替えます。
+`prepare_example.py` の `MARKET_CONFIG` から `input/config.json` を作ります。現在の設定は `market_start=2024-01-01`、`days=600`、`warmup=400`、`seed=71`、`seeker_arrivals/job_arrivals=7`（CLIの `--seeker-arrivals` / `--job-arrivals` に相当）、`application_days=20`、`posting_days=40`、`referrals=1` です。8種類ずつの日本語の職種・地域からペアを絞るため、3段階すべてを観測できる十分なwarmup規模が必要です。この設定では約57,700件の `events`（うち約19,600件がスコア付き）と約24MBのSQLite DBができます。市場の `output/dataset.sqlite.db` に `schema.sql` のビュー・派生テーブルを追加したものがfixtureです。候補CSVの `model_apply_score` は市場の最後のスコア付き紹介8件の値です。
 
 `experiments/example_oubo/` の設定・SQL・CSV・評価指標・プロット・メタデータは保存します。DBとモデルは除外します。このページの学習・推論コマンドで新しいrunにDBとモデルを作成できます。保存済みメタデータは当時の記録です。再実行時には別のrun ID・ハッシュが記録されます。他のexperimentはignore対象です。
 
@@ -51,4 +48,4 @@ uv run --locked python -m synthetic_funnel --market --run-dir <一時dir>/market
 
 初回は **準備 → 内容確認 → 学習 → 推論 → 結果確認** の順に進めます。DBが無い・開けない場合は上記のartifact取得または生成コマンドを使い、必要に応じて読み取り権限を確認してください。GUIに再生成機能はなく、閲覧は読み取り専用です。CLIでの再生成は既存のDB・候補CSV・manifestを置き換えます。
 
-DBは合成データです。`user` / `item` が不変の属性を持つマスター、`events` が紹介ごとの観測履歴、`events_latent` が反実仮の潜在値、`daily` が日次集計です。`scored_referrals` はID・日時・元スコア (`model_apply_score`) を整え、属性は `user` マスターへJOINして取得するビュー、`user_feature_daily` は紹介日ごとの `seeker_skill`（`user.user_skill`）と `occupation` を持つ派生テーブルです。学習SQLが `label` と `row_role` を作り、推論SQLが候補CSV由来の一時テーブル `calibration_candidates` と特徴量を結合します。詳細な列の意味と結果の読み方は[初回利用ガイド](../../docs/quickstart.md)を参照してください。
+DBは合成データです。`user` / `item` が不変の属性を持つマスター、`user_latent` / `item_latent` が参加時に決まる隠れた意欲、`events` が紹介ごとの観測履歴、`events_latent` が反実仮の潜在値、`daily` が日次集計です。`scored_referrals` はID・日時・元スコア (`model_apply_score`) を整え、属性は `user` マスターへJOINして取得し、warmup中のスコア欠損行を除外するビュー、`user_feature_daily` は紹介日ごとの `seeker_skill`（`user.user_skill`）と日本語TEXTの `occupation` を持つ派生テーブルです。学習SQLが `label` と `row_role` を作り、推論SQLが候補CSV由来の一時テーブル `calibration_candidates` と特徴量を結合します。詳細な列の意味と結果の読み方は[初回利用ガイド](../../docs/quickstart.md)を参照してください。
