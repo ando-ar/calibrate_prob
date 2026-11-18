@@ -74,7 +74,7 @@
     <table>
       <tr><th>入力</th><td>市場の設定（流入数・日数・warmup・紹介上限など）、市場開始日時、出力形式</td></tr>
       <tr><th>実行</th><td><code>python -m synthetic_funnel --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
-      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの反実仮の真値）、<code>user</code> / <code>item</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫とファネル）+ <code>manifest.json</code></td></tr>
+      <tr><th>出力</th><td>7テーブル: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの反実仮の真値）、<code>user</code> / <code>item</code>（参加者ごと）、<code>user_latent</code> / <code>item_latent</code>（参加者ごとの隠れた意欲）、<code>daily</code>（市場の日ごとの在庫とファネル）+ <code>manifest.json</code></td></tr>
     </table>
     <p>スコアは外部モデルファイルではなく、市場自身の warmup 紹介から学習します。warmup が生成日数以上のときは、すべてのスコア列がNULLになります。</p>
     <p>詳しいルールはドキュメントの <code>docs/MARKET.md</code> を参照してください。</p>

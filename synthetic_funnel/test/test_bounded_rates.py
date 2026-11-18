@@ -43,7 +43,7 @@ class BoundedRateTest(unittest.TestCase):
         self.assertGreater(withdrawal, 0)
         self.assertEqual(ng, 0)
 
-    def test_competition_direction_and_bounds_under_extreme_affinity(self):
+    def test_competition_direction_and_bounds_under_extreme_motivation(self):
         config = ProbabilityConfig()
         anchor = population_rates(config).intercepts
         f = pair_features(.7, .7, 800, 800, 1, 1)

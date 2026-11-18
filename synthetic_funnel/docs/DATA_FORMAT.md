@@ -1,14 +1,14 @@
 # 出力データ仕様
 
-出力は求職者マスター `user`、求人マスター `item`、紹介履歴 `events`、潜在値 `events_latent`、日次集計 `daily` の計5テーブルです。データは[継続市場のシミュレーション](MARKET.md)だけで生成します。市場のルールと生成手順は MARKET.md を、確率の計算方法は[紹介履歴の確率モデル](PROBABILITY_MODEL.md)を参照してください。
+出力は求職者マスター `user`、求人マスター `item`、参加者ごとの潜在値 `user_latent` / `item_latent`、紹介履歴 `events`、紹介ごとの潜在値 `events_latent`、日次集計 `daily` の計7テーブルです。データは[継続市場のシミュレーション](MARKET.md)だけで生成します。市場のルールと生成手順は MARKET.md を、確率の計算方法は[紹介履歴の確率モデル](PROBABILITY_MODEL.md)を参照してください。
 
 ## 出力形式とファイル名
 
 | 指定 | `output/` に作られるデータ | 主な用途 |
 | --- | --- | --- |
-| `--format sqlite`（既定） | `dataset.sqlite.db` の `user`、`item`、`events`、`events_latent`、`daily` テーブル | 1つのDBとして扱い、SQLで検索・結合する。 |
-| `--format parquet` | `user.parquet`、`item.parquet`、`events.parquet`、`events_latent.parquet`、`daily.parquet` | Pythonで列単位に読み込み、分析する。 |
-| `--format csv` | `user.csv`、`item.csv`、`events.csv`、`events_latent.csv`、`daily.csv` | 数行を目視で確認したり、テキストとして受け渡したりする。 |
+| `--format sqlite`（既定） | `dataset.sqlite.db` の `user`、`item`、`user_latent`、`item_latent`、`events`、`events_latent`、`daily` テーブル | 1つのDBとして扱い、SQLで検索・結合する。 |
+| `--format parquet` | `user.parquet`、`item.parquet`、`user_latent.parquet`、`item_latent.parquet`、`events.parquet`、`events_latent.parquet`、`daily.parquet` | Pythonで列単位に読み込み、分析する。 |
+| `--format csv` | `user.csv`、`item.csv`、`user_latent.csv`、`item_latent.csv`、`events.csv`、`events_latent.csv`、`daily.csv` | 数行を目視で確認したり、テキストとして受け渡したりする。 |
 
 どの形式でも `manifest.json` が付きます。フィールド一覧はこの文書の後半にあります。
 
@@ -18,17 +18,22 @@
 | --- | --- | --- | --- |
 | `user` | 求職者の1参加 | `user_id` | なし |
 | `item` | 求人の1掲載 | `item_id` | なし |
+| `user_latent` | 求職者の1参加（`user` と1対1） | `user_id` | `user_id` → `user` |
+| `item_latent` | 求人の1掲載（`item` と1対1） | `item_id` | `item_id` → `item` |
 | `events` | 紹介1件 | `event_id` | `user_id` → `user`、`item_id` → `item` |
 | `events_latent` | 紹介1件（`events` と1対1） | `event_id` | `event_id` → `events` |
 | `daily` | 市場の1日 | `day_dt` | なし |
 
-`user` と `item` は1参加=1行で、在籍中は属性が不変です。そのため `events` には属性列を持たず、必要な属性はマスター結合で取得します。紹介時点の属性の値はマスターの値と一致します。
+`user` と `item` は1参加=1行で、在籍中は属性が不変です。そのため `events` には属性列を持たず、必要な属性はマスター結合で取得します。紹介時点の属性の値はマスターの値と一致します。参加時に決まる隠れた意欲（モチベーション）も同様に不変で、`user_latent` と `item_latent` に1参加=1行で保存します。紹介ごとに同じ値を重複して持たせず、`events` から `user` / `item` を通じて結合します。
 
 ```sql
-SELECT e.event_id, u.user_skill, i.required_skill
+SELECT e.event_id, u.user_skill, i.required_skill,
+       ul.user_motivation, il.item_motivation
 FROM events AS e
 JOIN user AS u USING (user_id)
 JOIN item AS i USING (item_id)
+JOIN user_latent AS ul USING (user_id)
+JOIN item_latent AS il USING (item_id)
 ```
 
 型の表記はSQLiteの宣言です。Parquetでは TEXT=string、INTEGER=int64、REAL=double、CSVでは空欄がNULLに相当します。日時はUTCオフセット付きISO 8601の文字列です。
@@ -44,7 +49,6 @@ JOIN item AS i USING (item_id)
 | `occupation` | TEXT | なし | 職種。8種類の日本語の値のいずれか（下記）。 | `エンジニア` |
 | `region` | TEXT | なし | 勤務地。8種類の日本語の値のいずれか（下記）。 | `東京` |
 | `wants_remote` | INTEGER | なし | リモート希望。1=希望、0=不希望。 | `1` |
-| `user_affinity` | REAL | なし | 隠れた相性（潜在値）。観測データに現れない。 | `0.31` |
 | `departure_dt` | TEXT | NULL=観測締切時点で在籍中 | 退出日時。退出理由は保存しない。 | NULL |
 
 ## `item` 求人マスター
@@ -58,10 +62,27 @@ JOIN item AS i USING (item_id)
 | `occupation` | TEXT | なし | 職種。8種類の日本語の値のいずれか（下記）。 | `エンジニア` |
 | `region` | TEXT | なし | 勤務地。8種類の日本語の値のいずれか（下記）。 | `東京` |
 | `allows_remote` | INTEGER | なし | リモート可否。1=可、0=不可。 | `0` |
-| `item_affinity` | REAL | なし | 隠れた相性（潜在値）。観測データに現れない。 | `-0.12` |
 | `departure_dt` | TEXT | NULL=観測締切時点で掲載中 | 退出（掲載終了）日時。退出理由は保存しない。 | `2025-02-15T00:00:00+09:00` |
 
 `occupation` と `region` は8種類の日本語の `TEXT` 値です。`occupation` は `エンジニア` / `営業` / `事務` / `デザイン` / `マーケティング` / `介護` / `販売` / `製造`、`region` は `東京` / `大阪` / `名古屋` / `福岡` / `札幌` / `仙台` / `広島` / `沖縄` です。紹介では職種が一致し、地域が一致するか求人が全国リモート可（`allows_remote = 1`）のペアを選びます。SQLiteでは `TEXT`、Parquetでは string、CSVでは日本語の文字列として保存されます。
+
+## `user_latent` 求職者の潜在値
+
+`user` と1対1で、参加時に決まった隠れた意欲（モチベーション）だけを保存します。マスターから分離したのは、観測される属性ではなく反実仮の潜在値だからです。値は参加時にガウス分布（平均0、標準偏差0.5）から1回だけ生成され、在籍中は変化しません。各段階で求職者側のロジットに同じ値が足されます。
+
+| 列 | 型 | NULLの意味 | 内容 | 値の例 |
+| --- | --- | --- | --- | --- |
+| `user_id` | TEXT | なし（主キー） | 求職者のID。`user.user_id` を参照。 | `user-000000042` |
+| `user_motivation` | REAL | なし | 隠れた意欲（潜在値）。観測データに現れない。 | `0.31` |
+
+## `item_latent` 求人の潜在値
+
+`item` と1対1で、参加時に決まった隠れた意欲（モチベーション）だけを保存します。値は参加時にガウス分布（平均0、標準偏差0.5）から1回だけ生成され、掲載中は変化しません。各段階で企業側のロジットに同じ値が足されます。
+
+| 列 | 型 | NULLの意味 | 内容 | 値の例 |
+| --- | --- | --- | --- | --- |
+| `item_id` | TEXT | なし（主キー） | 求人のID。`item.item_id` を参照。 | `item-0007` |
+| `item_motivation` | REAL | なし | 隠れた意欲（潜在値）。観測データに現れない。 | `-0.12` |
 
 ## `events` 紹介と観測された結果
 
@@ -91,7 +112,7 @@ JOIN item AS i USING (item_id)
 
 ## `events_latent` 潜在値（反実仮の真値）
 
-`<stage>` は `application`、`screening`、`decision` のいずれかです。このテーブルの値はすべて紹介時点で確定する潜在値で、退出・掲載期限・相手の退出による選考取消・観測打切りを無視し、紹介後も仲介が継続した場合の真値（反実仮）です。実績の選考取消理由は保存しません。校正やモデル評価の真値との比較、生成器の診断に使います。学習や推論の特徴量は `events` の紹介時点の列とマスター結合した属性から選びます。
+`<stage>` は `application`、`screening`、`decision` のいずれかです。このテーブルの値はすべて紹介時点で確定する潜在値で、退出・掲載期限・相手の退出による選考取消・観測打切りを無視し、紹介後も仲介が継続した場合の真値（反実仮）です。実績の選考取消理由は保存しません。校正やモデル評価の真値との比較、生成器の診断に使います。学習や推論の特徴量は `events` の紹介時点の列とマスター結合した属性から選びます。参加者の隠れた意欲は属性と同じく不変なので、このテーブルには重複して保存しません。`events` から `user` / `item` を経由して `user_latent.user_motivation` / `item_latent.item_motivation` を結合してください。片側確率 `p_candidate_*` / `p_employer_*` と `p_*_eventual` の値は変更ありません。
 
 | 列 | 型 | NULLの意味 | 内容 | 値の例 |
 | --- | --- | --- | --- | --- |
@@ -99,8 +120,6 @@ JOIN item AS i USING (item_id)
 | `p_<stage>_eventual` | REAL | なし | 前段の到達を条件とした、期限を設けない真の移行確率。 | `0.112` |
 | `p_candidate_<stage>` | REAL | なし | 各段階の求職者側の確率。 | `0.310` |
 | `p_employer_<stage>` | REAL | なし | 各段階の企業側の確率。応募は求職者側だけで決まるため、`p_employer_application` は1。 | `0.361` |
-| `user_affinity` | REAL | なし | 紹介した求職者の隠れた相性。`user` の値と同じ。 | `0.31` |
-| `item_affinity` | REAL | なし | 紹介した求人の隠れた相性。`item` の値と同じ。 | `-0.12` |
 | `failure_stage` | TEXT | 全段階を通過する見込みならNULL | 潜在的に到達が途切れる段階。 | `screening` |
 | `failure_reason` | TEXT | 同上 | `not_applied`、`employer_rejection`、`candidate_withdrawal` のいずれか。 | `employer_rejection` |
 | `application_screening_gap` | REAL | なし | 応募と通過の確率の差。 | `-0.0988` |
@@ -133,7 +152,7 @@ NULLがなく、`market_start` から観測終了まで1日1行が入ります�
 
 | | 観測値 | 潜在値 |
 | --- | --- | --- |
-| 保存先 | `events` の日時列、`daily` の当日到達数 | `events_latent` 全体 |
+| 保存先 | `events` の日時列、`daily` の当日到達数 | `events_latent` 全体、`user_latent`、`item_latent` |
 | 受ける影響 | 市場の退出、掲載期限、相手の退出による選考取消、観測締切 | なし（反実仮の真値） |
 | 未到達の表現 | NULL（CSVでは空欄） | 永久に到達しなければNULL、到達するなら日時を記録 |
 
@@ -164,7 +183,7 @@ NULLがなく、`market_start` から観測終了まで1日1行が入ります�
 | `training_cutoff` | 学習に使ったwarmup紹介の締切日時。この日時より前の紹介の `model_*_score` はNULL。 |
 | `warmup_end` | warmup期間の終了日時。この日時以降の紹介にスコアが付く。 |
 | `generation_seconds` | データ生成にかかった秒数（計測値）。 |
-| `row_counts` | テーブルごとの件数。`user`、`item`、`events`、`events_latent`、`daily`。 |
+| `row_counts` | テーブルごとの件数。`user`、`user_latent`、`item`、`item_latent`、`events`、`events_latent`、`daily`。 |
 | `probability_scope` | 潜在確率の意味づけの注記。 |
 | `files` | 出力ファイルごとのSHA-256。 |
 
