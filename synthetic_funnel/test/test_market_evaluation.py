@@ -13,6 +13,8 @@ import pyarrow.parquet as pq
 from unittest.mock import patch
 
 from synthetic_funnel import MarketConfig, write_market_dataset
+from synthetic_funnel.export import SQLITE_FILENAME
+from synthetic_funnel.market import simulate
 from synthetic_funnel.market_candidates import attach_latent_truth, candidate_rows
 from synthetic_funnel.market_evaluation import (
     CompetitionConfig,
@@ -20,6 +22,7 @@ from synthetic_funnel.market_evaluation import (
     evaluate_fallback,
     load_submission,
 )
+from synthetic_funnel.shared import parse_datetime
 
 MARKET_START = "2024-01-01T00:00:00+09:00"
 CONFIG = MarketConfig(days=150, warmup=40, seeker_arrivals=10, job_arrivals=10, seed=71)
@@ -182,6 +185,96 @@ class EvaluatorTest(unittest.TestCase):
         self.assertEqual(config.fallback_seeds, 20)
         self.assertEqual(config.max_per_user_per_day, 5)
         self.assertEqual(config.daily_budget_per_active_user, 5)
+
+
+class ReplayRecipeParityTest(unittest.TestCase):
+    """issue #37: recipe candidates with a rank must all be introduced in replay.
+
+    The participant dataset has no latent motivation tables, so the evaluator has
+    to recover them from the sibling organiser dataset to reproduce the frozen
+    ``D_train`` state.  Three consecutive evaluation days exercise both failure
+    mechanisms: a pair re-ranked on a later day (``seen``) and an actor hired by
+    an earlier policy day (``no_seeker``).
+    """
+
+    CONFIG = MarketConfig(days=60, warmup=20, seeker_arrivals=4, job_arrivals=30,
+                          seed=11, referrals=1)
+    EVAL_DAYS = (20, 21, 22)
+
+    @classmethod
+    def setUpClass(cls):
+        directory = TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        root = Path(directory.name)
+        cls.org = root / "organiser"
+        cls.part = root / "participant"
+        manifest = write_market_dataset(cls.CONFIG, cls.org, market_start=MARKET_START)
+        start = parse_datetime(manifest["market_start"])
+        cls.part.mkdir()
+        (cls.part / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        source = sqlite3.connect(cls.org / SQLITE_FILENAME)
+        target = sqlite3.connect(cls.part / SQLITE_FILENAME)
+        try:
+            source.backup(target)
+            for table in ("user_latent", "item_latent", "events_latent"):
+                target.execute(f"DROP TABLE IF EXISTS {table}")
+            target.commit()
+        finally:
+            source.close()
+            target.close()
+
+        candidates = []
+        eval_dts = []
+        connection = sqlite3.connect(cls.part / SQLITE_FILENAME)
+        try:
+            for day in cls.EVAL_DAYS:
+                day_dt = (start + timedelta(days=day)).isoformat()
+                eval_dts.append(day_dt)
+                candidates.extend(candidate_rows(connection, day_dt))
+        finally:
+            connection.close()
+        assert len(candidates) > 0
+        pq.write_table(pa.Table.from_pylist(candidates), cls.part / "candidates.parquet")
+
+        submission = []
+        for day_dt in eval_dts:
+            rows = sorted((row for row in candidates if row["day_dt"] == day_dt),
+                          key=lambda row: (-row["fee_if_decided_yen"], row["user_id"], row["item_id"]))
+            for rank, row in enumerate(rows, 1):
+                submission.append({"day_dt": day_dt, "user_id": row["user_id"],
+                                   "item_id": row["item_id"], "rank": rank})
+        pq.write_table(pa.Table.from_pylist(submission), root / "submission.parquet")
+        cls.root = root
+        cls.candidates = candidates
+        # Confirm the regression is actually exercised: some pairs are re-ranked
+        # on a later day and would be skipped as ``seen`` under the old logic.
+        seen = set()
+        repeated = 0
+        for day_dt in eval_dts:
+            pairs = {(row["user_id"], row["item_id"]) for row in submission if row["day_dt"] == day_dt}
+            repeated += len(pairs & seen)
+            seen.update(pairs)
+        assert repeated > 0
+
+    def test_recipe_candidates_with_rank_have_zero_replay_skips(self):
+        captured = {}
+
+        def capture(config, *, replay, **kwargs):
+            captured["replay"] = replay
+            return simulate(config, replay=replay, **kwargs)
+
+        with patch("synthetic_funnel.market_evaluation.simulate", side_effect=capture):
+            result = evaluate(self.part, self.root / "submission.parquet", self.root / "out",
+                              config=CompetitionConfig(horizon=10))
+
+        self.assertEqual(result["evaluation"]["replay_skipped_pairs"], 0)
+        self.assertEqual(result["evaluation"]["replay_skip_reasons"], {})
+        replay = captured["replay"]
+        introduced = {key for pairs in replay.introduced.values() for key in pairs}
+        selected = {pair for pairs in replay.policy.values() for pair in pairs}
+        self.assertEqual(introduced, selected)
+        self.assertGreater(len(introduced), 0)
 
 
 if __name__ == "__main__":

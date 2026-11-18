@@ -109,6 +109,20 @@ class ReplayIntroductions:
         run simply continues until ``config.days`` so every selected row can
         mature through ``D_eval_end + H``.
 
+    Recipe contract (issue #37)
+        ``admissible`` is the exact set of ``(day, seeker, job)`` triples admitted
+        by the DAILY_CANDIDATES recipe on each evaluation day.  A policy pair
+        outside that set is skipped with ``not_in_recipe``; every pair inside it
+        is introduced.  ``departure`` maps actor indices to their dataset
+        ``departure_dt`` day (``None`` when the dataset leaves it NULL).  Because
+        the recipe is a *batch* view over the frozen base dataset, an actor that
+        the policy hired on an earlier evaluation day is restored from that
+        schedule when a later day still admits it -- replay dynamics must not
+        silently shrink the recipe's introduction universe.  Policy introductions
+        are deliberately **not** added to ``seen``: the recipe's ``NOT EXISTS``
+        test only consults base-run events, so re-ranking the same pair on a
+        later day is legitimate and must not be treated as a duplicate.
+
     RNG discipline
         The policy *replaces* the built-in ``rng.randrange`` introduction draw and
         consumes no value from the market ``random.Random`` stream.  Consequently
@@ -128,13 +142,17 @@ class ReplayIntroductions:
     policy: dict[int, list[tuple[int, int]]] = field(default_factory=dict)
     validate: bool = True
     introduced: dict[int, list[tuple[int, int]]] = field(default_factory=dict)
-    skipped: list[tuple[int, int, int]] = field(default_factory=list)
+    skipped: list[tuple[int, int, int, str]] = field(default_factory=list)
+    admissible: object = None       # optional set of (day, sid, jid) triples from the recipe
+    departure: object = None        # optional {'seekers': {sid: day|None}, 'jobs': {jid: day|None}}
 
     def __post_init__(self):
         if type(self.eval_start) is not int or type(self.eval_end) is not int or self.eval_start >= self.eval_end:
             raise ValueError('Replay requires integer eval_start < eval_end')
         self.policy = {int(day): [(int(s), int(j)) for s, j in pairs]
                        for day, pairs in self.policy.items()}
+        if self.admissible is not None:
+            self.admissible = {(int(day), int(s), int(j)) for day, s, j in self.admissible}
 
     def mode(self, day: int) -> str:
         if day < self.eval_start:
@@ -145,6 +163,16 @@ class ReplayIntroductions:
 
     def pairs_for_day(self, day: int):
         return self.policy.get(day, ())
+
+    def is_admissible(self, day: int, sid: int, jid: int) -> bool:
+        """Whether the DAILY_CANDIDATES recipe admits this pair on this day."""
+        return self.admissible is None or (day, sid, jid) in self.admissible
+
+    def frozen_departure(self, kind: str, index: int):
+        """Dataset departure day for an actor, or ``None`` when still live late."""
+        if self.departure is None:
+            return None
+        return self.departure.get(kind, {}).get(index)
 
 
 def replay_market(config, *, eval_start, eval_end, policy, validate=True, **simulate_kwargs):
@@ -425,14 +453,28 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             # External ranking policy.  No rng draw is consumed for selection, so
             # the funnel stream is not perturbed by the number of introductions.
             for sid,jid in replay.pairs_for_day(day):
+                # The recipe is evaluated against the frozen base dataset, not
+                # against replay's own branch state.  Restore an actor that a
+                # previous policy day removed but that the dataset still lists as
+                # present on `day` (issue #37).  The schedule lookup and the live
+                # dict mutation consume no rng draws.
+                for kind,index,live,profiles in (('seekers',sid,live_s,seekers),('jobs',jid,live_j,jobs)):
+                    if index in live or replay.departure is None:
+                        continue
+                    dep=replay.frozen_departure(kind,index)
+                    if dep is not None and not dep>day:
+                        continue
+                    live[index]={'until': config.days+1 if dep is None else dep,
+                                 'pending': set(),'seen': set()}
+                    profiles[index][7]=np.nan
                 s=live_s.get(sid)
-                # "Live" follows the DAILY_CANDIDATES recipe: still present in
-                # live_s / live_j (departure NULL or after :day).  Do not add an
-                # extra `until <= day` test here -- a seeker with an unresolved
-                # case can stay in live_s past `until` while departure_dt stays
-                # NULL, and the recipe still counts that pair as a candidate.
                 reason=None
-                if s is None:reason='no_seeker'
+                # Only the recipe's own conditions may exclude a pair.  A pair
+                # outside `admissible` was never a candidate (e.g. a hand-written
+                # policy), so it is the single legitimate exclusion reason.
+                if not replay.is_admissible(day,sid,jid):
+                    reason='not_in_recipe'
+                elif s is None:reason='no_seeker'
                 elif jid not in live_j:reason='no_item'
                 else:
                     profile=seekers[sid];job=jobs[jid]
@@ -440,9 +482,12 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                     elif not (job[4]==profile[4] or job[5]==1):reason='region'
                     elif max(100,job[2]-100)>profile[2]:reason='salary'
                     elif jid in s['seen']:reason='seen'
-                if reason is not None and (replay.validate or reason=='seen'):
+                if reason is not None and (replay.validate or reason in ('seen','not_in_recipe')):
                     replay.skipped.append((day,sid,jid,reason));continue
-                s['seen'].add(jid);add_introduction(sid,jid)
+                # Do not record policy introductions in `seen`: the recipe's
+                # NOT EXISTS test consults only base-run events, so the same pair
+                # may legitimately be ranked again on a later evaluation day.
+                add_introduction(sid,jid)
             replay.introduced[day]=[(int(r[0]),int(r[1])) for r in selected]
         else:
             pools={}

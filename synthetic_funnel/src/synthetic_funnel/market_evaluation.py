@@ -145,7 +145,21 @@ def read_table(directory, name, fmt="sqlite"):
     raise FileNotFoundError(f"Table {name!r} not found in {directory}")
 
 
-def load_population(manifest_dir, fmt, start):
+def _departure_day(value, start):
+    """First integer day at which a dataset actor is no longer present.
+
+    ``departure_dt`` is a timestamp, not a day boundary: a cancellation at day
+    25.6 still leaves the actor present for the day-25 recipe.  The market's
+    ``live_*['until']`` is an integer day removed when ``until <= day``, so the
+    dataset predicate ``departure_dt > D`` maps to ``floor(departure) + 1``.
+    """
+    if value in (None, ""):
+        return None
+    elapsed = (parse_datetime(str(value)) - start).total_seconds() / 86400
+    return int(math.floor(elapsed)) + 1
+
+
+def load_population(manifest_dir, fmt, start, *, population_dir=None):
     """Rebuild the pre-generated arrival schedule from the published tables.
 
     Replay keeps every arrival draw (discarding its value) so the market RNG
@@ -154,21 +168,32 @@ def load_population(manifest_dir, fmt, start):
     stable across base and replay even after a policy changes introduction
     draw counts on later evaluation days.  Only the published tables are read;
     nothing about the schedule is stored in a bulky snapshot file.
+
+    ``population_dir`` must point at a dataset with the organiser-only
+    ``user_latent``/``item_latent`` tables.  COMPETITION.md §5.2 requires the
+    replay to reuse the *same latent parameters* as the base market; the
+    participant copy intentionally omits those tables, and substituting 0 for
+    every motivation changes funnel probabilities and therefore the frozen
+    ``D_train`` state (issue #37).  The returned ``departure`` mapping keeps the
+    dataset's ``departure_dt`` so policy days can restore actors that the
+    replay branch removed but the recipe still considers present.
     """
+    profile_dir = Path(population_dir) if population_dir is not None else Path(manifest_dir)
     users = read_table(manifest_dir, "user", fmt)
     items = read_table(manifest_dir, "item", fmt)
     try:
         user_motivation = {row["user_id"]: float(row["user_motivation"])
-                           for row in read_table(manifest_dir, "user_latent", fmt)}
+                           for row in read_table(profile_dir, "user_latent", fmt)}
     except FileNotFoundError:
         user_motivation = {}
     try:
         item_motivation = {row["item_id"]: float(row["item_motivation"])
-                           for row in read_table(manifest_dir, "item_latent", fmt)}
+                           for row in read_table(profile_dir, "item_latent", fmt)}
     except FileNotFoundError:
         item_motivation = {}
     seekers = [None] * (1 + max(_parse_index(row["user_id"], "user") for row in users))
     jobs = [None] * (1 + max(_parse_index(row["item_id"], "item") for row in items))
+    departure = {"seekers": {}, "jobs": {}}
     for row in users:
         sid = _parse_index(row["user_id"], "user")
         seekers[sid] = [
@@ -176,6 +201,7 @@ def load_population(manifest_dir, fmt, start):
             float(row["desired_salary"]), row["occupation"], row["region"],
             int(row["wants_remote"]), user_motivation.get(row["user_id"], 0.0), np.nan,
         ]
+        departure["seekers"][sid] = _departure_day(row.get("departure_dt"), start)
     for row in items:
         jid = _parse_index(row["item_id"], "item")
         jobs[jid] = [
@@ -184,9 +210,10 @@ def load_population(manifest_dir, fmt, start):
             int(row["allows_remote"]), item_motivation.get(row["item_id"], 0.0), np.nan,
             float(row["fee_rate"]),
         ]
+        departure["jobs"][jid] = _departure_day(row.get("departure_dt"), start)
     if any(profile is None for profile in seekers) or any(profile is None for profile in jobs):
         raise ValueError("Population schedule has gaps in actor indices")
-    return {"seekers": seekers, "jobs": jobs}
+    return {"seekers": seekers, "jobs": jobs, "departure": departure}
 
 
 SUBMISSION_FIELDS = ("day_dt", "user_id", "item_id", "rank")
@@ -323,8 +350,33 @@ def _event_day(events, field, start):
     return days
 
 
+def _resolve_population_dir(manifest_dir, latent_path, population_dir, fmt="sqlite"):
+    """Locate the organiser dataset that holds the latent actor motivations.
+
+    The participant manifest cannot reproduce the frozen base state on its own:
+    ``user_latent``/``item_latent`` are deliberately withheld (issue #37).  The
+    organiser dataset is the sibling of the distributed ``participant`` copy, or
+    the parent directory of ``--candidates-latent``.  An explicit
+    ``population_dir`` always wins; if nothing with latent tables is found we
+    keep the historical behaviour and record the resulting skips honestly.
+    """
+    if population_dir is not None:
+        return Path(population_dir)
+    manifest_dir = Path(manifest_dir)
+    candidates = [Path(latent_path).parent] if latent_path is not None else []
+    candidates.extend((manifest_dir.parent / "organiser", manifest_dir))
+    for directory in candidates:
+        try:
+            read_table(directory, "user_latent", fmt)
+        except FileNotFoundError:
+            continue
+        return directory
+    return manifest_dir
+
+
 def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
-             candidates_path=None, latent_path=None, day_filter=None):
+             candidates_path=None, latent_path=None, day_filter=None,
+             population_dir=None):
     """Run a full replay evaluation and write the four output artifacts."""
     manifest_dir = Path(manifest_dir)
     output_dir = Path(output_dir)
@@ -367,9 +419,21 @@ def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
     for row in selected:
         policy[_day_offset(row["day_dt"], start)].append((
             _parse_index(row["user_id"], "user"), _parse_index(row["item_id"], "item")))
+    # The recipe's admission universe, keyed by (day, actor indices).  Every
+    # submitted pair is checked against the candidates table above, so this is
+    # exactly the set of pairs replay may introduce (issue #37).
+    admissible = set()
+    for row in candidates:
+        key = (str(row["day_dt"]), str(row["user_id"]), str(row["item_id"]))
+        if key in key_partition:
+            admissible.add((_day_offset(key[0], start), _parse_index(key[1], "user"),
+                            _parse_index(key[2], "item")))
     replay = ReplayIntroductions(eval_start=min(eval_days), eval_end=max(eval_days) + 1,
-                                 policy=dict(policy))
-    population = load_population(manifest_dir, fmt, start)
+                                 policy=dict(policy), admissible=admissible)
+    population = load_population(manifest_dir, fmt, start,
+                                 population_dir=_resolve_population_dir(
+                                     manifest_dir, latent_path, population_dir, fmt))
+    replay.departure = population["departure"]
     rows, seekers, jobs = simulate(market_config, replay=replay, population=population)
 
     replay_partition_day = defaultdict(float)
@@ -573,6 +637,8 @@ def main(argv=None):
     evaluate_parser.add_argument("--config", type=Path, help="Optional JSON run config")
     evaluate_parser.add_argument("--candidates", type=Path, help="Override candidates table path")
     evaluate_parser.add_argument("--candidates-latent", type=Path, help="Override organizer-only latent table")
+    evaluate_parser.add_argument("--population-dir", type=Path,
+                                 help="Organiser dataset with user_latent/item_latent for exact frozen state")
     evaluate_parser.add_argument("--day", type=int, help="Evaluate only this day offset (fallback helper)")
     fallback_parser = commands.add_parser("evaluate-fallback",
                                           help="Single-day evaluation amplified over independent seeds")
@@ -585,7 +651,7 @@ def main(argv=None):
         if args.command == "evaluate":
             result = evaluate(args.manifest, args.submission, args.output, config=_load_config(args.config),
                               candidates_path=args.candidates, latent_path=args.candidates_latent,
-                              day_filter=args.day)
+                              day_filter=args.day, population_dir=args.population_dir)
             print(json.dumps({"metrics": result["metrics"], "output": str(args.output.resolve())}))
         else:
             runs = json.loads(args.spec.read_text(encoding="utf-8"))
