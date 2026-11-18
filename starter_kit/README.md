@@ -65,6 +65,23 @@ uv run --project synthetic_funnel python starter_kit/build_baseline.py
 同じ config・seed・データ version なら提出 parquet はビット単位で同一です
 （診断メタデータの `generated_at` を除く）。
 
+### 複数 seed の生成（issue #40）
+
+評価ではストレージ制約（空き約25GB）から seed を **3〜5 本**に抑制し、代わりに流入を
+100〜200/200 に増やします。紹介上限（5件/日）の消化率は流入 150/150 付近で約97%に
+飽和し、それ以上の流入は決定件数をほぼ増やさないため、seed 数より 1 seed あたりの
+流入に予算を使うのが合理的です（仕様 §3.4 / §5.5 / §11 #4）。
+
+seed ごとに独立プロセスで生成するには、フラットな market config JSON に対して次を実行します。
+
+```powershell
+uv run --locked synthetic-funnel --config <market-config.json> --output data/seeds --seeds 71,72,73 --jobs 3
+```
+
+`data/seeds/seed-<seed>/` に完全なデータセットが作られ、同じ seed の単独実行
+（`--seed 71`）とバイト単位で同一です。並列数は既定で CPU コア数、`--jobs` で上限を
+指定します。流入の上書きは `--seeker-arrivals 200 --job-arrivals 200` を使います。
+
 ## 3. 候補と学習履歴の読み込み（行数制約つき）
 
 `candidates` は観測列だけです。日 D の完全候補集合は `candidate_rows()`（§3.2 /

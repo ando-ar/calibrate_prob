@@ -43,6 +43,20 @@ runs/quickstart-<日時>/
 
 出力先が存在すると停止します。同じ条件で再実行するには、新しい実行ディレクトリに `input/config.json` を置きます。`--format parquet` または `--format csv` で形式を指定できます。`--seeker-arrivals` と `--job-arrivals` で1日あたりの流入数を上書きできます。市場のルールとスコアの学習方法は[継続市場のシミュレーション](MARKET.md)を参照してください。
 
+### 複数 seed の並列生成（issue #40）
+
+評価用に複数 seed を作る場合は `--seeds` を使います。seed ごとに別プロセスが走り、
+`<出力先>/seed-<seed>/` に完全なデータセットが作られます。並列数は既定で CPU コア数
+（seed 数が少なければその数）で、`--jobs` で上限を変更できます。
+
+```powershell
+uv run --locked synthetic-funnel --config "$run/input/config.json" --output "$run/seeds" --seeds 71,72,73,74,75 --jobs 5
+```
+
+各 seed の出力は同じ seed の単独実行（`--seed 71`）とバイト単位で同一です。乱数状態・
+warmup モデル・出力先はプロセス間で共有されません。評価 seed はストレージ制約から
+3〜5 本が推奨です（[コンペ仕様](COMPETITION.md) §3.4 / §5.5）。
+
 ## 3. SQLiteで紹介件数と観測済み結果を確認する
 
 ```powershell
