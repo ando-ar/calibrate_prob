@@ -64,7 +64,7 @@ class MarketConfig:
             raise ValueError('Training density and reservoir size must be positive integers')
 
 
-NUMERIC_COLUMNS=(0,1,2,5,6)  # arrival, skill, salary, remote flag, hidden affinity (categories are columns 3 and 4)
+NUMERIC_COLUMNS=(0,1,2,5,6)  # arrival, skill, salary, remote flag, hidden motivation (categories are columns 3 and 4)
 
 
 def numeric_profiles(profiles,indices):
@@ -138,7 +138,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     latent_rng=np.random.default_rng(np.random.SeedSequence(
         [config.seed if branch_seed is None else branch_seed,LATENT_STREAM]))
     # Profiles are mutable 8-column rows: arrival, skill, salary, occupation, region, remote,
-    # hidden affinity and departure (NaN while the actor is still live).
+    # hidden motivation (column 6) and departure (column 7, NaN while the actor is still live).
     seekers=[] if resume is None else [list(profile) for profile in resume['seekers']]
     jobs=[] if resume is None else [list(profile) for profile in resume['jobs']]
     # Profile tables avoid converting the entire growing history daily.
@@ -244,7 +244,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
         for _ in range(config.seeker_arrivals):
             sid=len(seekers);skill=rng.random()
             # arrival, skill, desired salary, occupation, region, remote preference, hidden
-            # affinity, departure (NaN while live)
+            # motivation, departure (NaN while live)
             seekers.append([day,skill,max(200,300+800*skill+rng.gauss(0,100)),rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
             if seeker_table is not None:seeker_table[sid]=seekers[-1]
             live_s[sid]={'until': day+config.application_days,'pending': set(),'seen': set()}

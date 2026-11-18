@@ -95,15 +95,15 @@ def bounded_gates(candidate_logit, employer_logit, config, stage):
     return candidate, employer
 
 
-def score_components(config, features, seeker_affinity, employer_affinity):
+def score_components(config, features, seeker_motivation, employer_motivation):
     model = config.mechanism
     scores = []
     for i, effect in enumerate(config.skill_effects):
         match = effect * (np.asarray(features['skill_match']) - .5) / (1 if i == 0 else 2)
-        c = (match + seeker_affinity - model.salary_penalties[i] * np.asarray(features['salary_shortfall'])
+        c = (match + seeker_motivation - model.salary_penalties[i] * np.asarray(features['salary_shortfall'])
              - model.overqualification_penalties[i] * np.asarray(features['overqualification'])
              - model.remote_penalties[i] * np.asarray(features['remote_mismatch']))
-        e = match + employer_affinity - model.skill_shortfall_penalties[i] * np.asarray(features['skill_shortfall'])
+        e = match + employer_motivation - model.skill_shortfall_penalties[i] * np.asarray(features['skill_shortfall'])
         c = c - model.other_applications_penalties[i] * np.log1p(features.get('other_applications', 0))
         e = e - model.competing_candidates_penalties[i] * np.log1p(features.get('competing_candidates', 0))
         scores.append(np.broadcast_arrays(c, e))
@@ -114,12 +114,12 @@ def array_sigmoid(values):
     return np.exp(-np.logaddexp(0, -np.asarray(values)))
 
 
-def probability_arrays(config, features, seeker_affinity=0.0, employer_affinity=0.0, intercepts=None):
+def probability_arrays(config, features, seeker_motivation=0.0, employer_motivation=0.0, intercepts=None):
     """Return vectorized probabilities with shape (..., stage, side)."""
     if intercepts is None:
         from .rates import population_rates
         intercepts = population_rates(config).intercepts
-    scores = score_components(config, features, seeker_affinity, employer_affinity)
+    scores = score_components(config, features, seeker_motivation, employer_motivation)
     result = []
     for i, (c, e) in enumerate(scores):
         if i == 2:
@@ -132,8 +132,8 @@ def probability_arrays(config, features, seeker_affinity=0.0, employer_affinity=
     return np.stack([np.stack(sides, axis=-1) for sides in result], axis=-2)
 
 
-def transition_probabilities(config, features, seeker_affinity=0.0, employer_affinity=0.0):
-    if not all(math.isfinite(x) for x in (seeker_affinity, employer_affinity)):
-        raise ValueError('Hidden affinities must be finite')
+def transition_probabilities(config, features, seeker_motivation=0.0, employer_motivation=0.0):
+    if not all(math.isfinite(x) for x in (seeker_motivation, employer_motivation)):
+        raise ValueError('Hidden motivations must be finite')
     return tuple(tuple(float(v) for v in pair) for pair in
-                 probability_arrays(config, features, seeker_affinity, employer_affinity))
+                 probability_arrays(config, features, seeker_motivation, employer_motivation))

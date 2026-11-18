@@ -30,11 +30,19 @@ from .shared import (
 
 USER_TABLE = Table(
     "user", ("user_id", "arrival_dt", "user_skill", "desired_salary", "occupation", "region",
-             "wants_remote", "user_affinity", "departure_dt"), "user_id",
+             "wants_remote", "departure_dt"), "user_id",
+)
+USER_LATENT_TABLE = Table(
+    "user_latent", ("user_id", "user_motivation"), "user_id",
+    (("user_id", USER_TABLE.name, USER_TABLE.key),),
 )
 ITEM_TABLE = Table(
     "item", ("item_id", "arrival_dt", "required_skill", "offered_salary", "occupation", "region",
-             "allows_remote", "item_affinity", "departure_dt"), "item_id",
+             "allows_remote", "departure_dt"), "item_id",
+)
+ITEM_LATENT_TABLE = Table(
+    "item_latent", ("item_id", "item_motivation"), "item_id",
+    (("item_id", ITEM_TABLE.name, ITEM_TABLE.key),),
 )
 DAILY_TABLE = Table("daily", ("day_dt", "live_users", "live_items", "referrals", "new_users",
                               "new_items", "applications", "screenings", "decisions"), "day_dt")
@@ -49,7 +57,7 @@ EVENTS_LATENT_TABLE = Table(
     "events_latent",
     ("event_id", *(f"p_{stage}_eventual" for stage in STAGES),
      *(f"p_candidate_{stage}" for stage in STAGES), *(f"p_employer_{stage}" for stage in STAGES),
-     "user_affinity", "item_affinity", "failure_stage", "failure_reason",
+     "failure_stage", "failure_reason",
      "application_screening_gap", "relative_application_screening_gap",
      *(f"latent_{column}" for column in DATE_COLUMNS)),
     "event_id", (("event_id", EVENTS_TABLE.name, EVENTS_TABLE.key),),
@@ -69,12 +77,19 @@ def _item_id(index: int):
 
 
 def _profile_records(table, profiles, start, make_id):
-    for index, (arrival, skill, salary, occupation, region, remote, affinity, departure) in enumerate(profiles):
+    # The motivation offset lives in a dedicated latent table, not in the master.
+    for index, (arrival, skill, salary, occupation, region, remote, _motivation, departure) in enumerate(profiles):
         yield dict(zip(table.fields, (
             make_id(index), _datetime_at(start, float(arrival)), float(skill), float(salary),
-            str(occupation), str(region), int(remote), float(affinity),
+            str(occupation), str(region), int(remote),
             None if not math.isfinite(departure) else _datetime_at(start, float(departure)),
         ), strict=True))
+
+
+def _latent_profile_records(table, profiles, make_id):
+    """Yield one latent row per participant with its fixed own-side motivation offset."""
+    for index, profile in enumerate(profiles):
+        yield dict(zip(table.fields, (make_id(index), float(profile[6])), strict=True))
 
 
 def _event_records(rows, seekers, jobs, start, scores, progress):
@@ -104,7 +119,6 @@ def _event_records(rows, seekers, jobs, start, scores, progress):
             truth = dict.fromkeys(EVENTS_LATENT_TABLE.fields)
             truth.update(
                 event_id=event_id, p_application_eventual=pa, p_screening_eventual=ps, p_decision_eventual=pd,
-                user_affinity=float(seekers[seeker, 6]), item_affinity=float(jobs[job, 6]),
                 application_screening_gap=pa - ps,
                 relative_application_screening_gap=pa / application_base - ps / screening_base,
             )
@@ -141,6 +155,8 @@ def write_market_dataset(
         extra_tables = (
             (USER_TABLE, _profile_records(USER_TABLE, seekers, start, _user_id)),
             (ITEM_TABLE, _profile_records(ITEM_TABLE, jobs, start, _item_id)),
+            (USER_LATENT_TABLE, _latent_profile_records(USER_LATENT_TABLE, seekers, _user_id)),
+            (ITEM_LATENT_TABLE, _latent_profile_records(ITEM_LATENT_TABLE, jobs, _item_id)),
             (DAILY_TABLE, (dict(zip(DAILY_TABLE.fields,
                                     (_datetime_at(start, day), users, items, referrals, new_users,
                                      new_items, applications, screenings, decisions), strict=True))
@@ -155,7 +171,8 @@ def write_market_dataset(
             "config": json.loads(json.dumps(asdict(config))), "market_start": start.isoformat(),
             "observation_end_exclusive": end,
             "row_counts": {"events": len(rows), "events_latent": len(rows), "user": len(seekers),
-                           "item": len(jobs), "daily": len(daily)},
+                           "user_latent": len(seekers), "item": len(jobs), "item_latent": len(jobs),
+                           "daily": len(daily)},
             "training": training_info,
             "training_cutoff": training_info["training_cutoff"],
             "warmup_end": training_info["warmup_end"],

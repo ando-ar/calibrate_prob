@@ -1,5 +1,6 @@
 import csv
 import json
+import math
 import sqlite3
 import unittest
 from contextlib import closing
@@ -55,6 +56,36 @@ class MarketExportTest(unittest.TestCase):
                 sample = connection.execute(f"SELECT occupation, region FROM {table} LIMIT 50").fetchall()
                 self.assertTrue(all(occupation in OCCUPATIONS and region in REGIONS
                                     for occupation, region in sample))
+            # Motivation is immutable, so it lives in dedicated 1:1 latent tables rather
+            # than in the masters or duplicated on every events_latent row.
+            for master, latent, id_column, motivation in (
+                ("user", "user_latent", "user_id", "user_motivation"),
+                ("item", "item_latent", "item_id", "item_motivation"),
+            ):
+                self.assertEqual(connection.execute(f"SELECT count(*) FROM {latent}").fetchone()[0],
+                                 connection.execute(f"SELECT count(*) FROM {master}").fetchone()[0])
+                self.assertEqual(connection.execute(
+                    f"SELECT {id_column} FROM {latent} EXCEPT SELECT {id_column} FROM {master}").fetchall(), [])
+                self.assertEqual(connection.execute(
+                    f"SELECT {id_column} FROM {master} EXCEPT SELECT {id_column} FROM {latent}").fetchall(), [])
+                values = [row[0] for row in connection.execute(f"SELECT {motivation} FROM {latent}")]
+                self.assertTrue(all(isinstance(value, float) and math.isfinite(value) for value in values))
+                self.assertGreater(len(values), 1)
+                self.assertLess(abs(np.mean(values)), 0.2)
+                self.assertTrue(0.2 < np.std(values) < 0.9)
+                latent_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({latent})")}
+                self.assertEqual(latent_columns, {id_column, motivation})
+                master_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({master})")}
+                self.assertNotIn(f"{master}_affinity", master_columns)
+                self.assertNotIn(f"{master}_affinity", latent_columns)
+            latent_columns = {row[1] for row in connection.execute("PRAGMA table_info(events_latent)")}
+            self.assertNotIn("user_affinity", latent_columns)
+            self.assertNotIn("item_affinity", latent_columns)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM events AS e "
+                "JOIN user AS u USING (user_id) JOIN user_latent AS ul USING (user_id) "
+                "JOIN item AS i USING (item_id) JOIN item_latent AS il USING (item_id) "
+                "WHERE ul.user_motivation IS NULL OR il.item_motivation IS NULL").fetchone()[0], 0)
             departed = connection.execute(
                 "SELECT count(*) FROM user WHERE departure_dt IS NOT NULL").fetchone()[0]
             self.assertGreater(departed, 0)
@@ -107,13 +138,18 @@ class MarketExportTest(unittest.TestCase):
             self.assertEqual(first.utcoffset(), datetime.fromisoformat(MARKET_START).utcoffset())
             self.assertEqual((first.hour, first.minute, first.second), (0, 14, 24))
             manifest = manifests["sqlite"]
-            self.assertEqual(set(manifest["row_counts"]), {"events", "events_latent", "user", "item", "daily"})
+            self.assertEqual(set(manifest["row_counts"]),
+                             {"events", "events_latent", "user", "user_latent", "item", "item_latent", "daily"})
             self.assertEqual(manifest["row_counts"]["events"], events[0])
             self.assertEqual(manifest["row_counts"]["events_latent"], events[0])
             self.assertEqual(manifest["row_counts"]["user"],
                              connection.execute("SELECT count(*) FROM user").fetchone()[0])
             self.assertEqual(manifest["row_counts"]["item"],
                              connection.execute("SELECT count(*) FROM item").fetchone()[0])
+            self.assertEqual(manifest["row_counts"]["user_latent"],
+                             connection.execute("SELECT count(*) FROM user_latent").fetchone()[0])
+            self.assertEqual(manifest["row_counts"]["item_latent"],
+                             connection.execute("SELECT count(*) FROM item_latent").fetchone()[0])
             self.assertEqual(manifest["row_counts"]["daily"], config.days)
             self.assertIn("truth_scope", manifest)
             self.assertIn("probability_scope", manifest)
@@ -143,6 +179,28 @@ class MarketExportTest(unittest.TestCase):
                             for row in csv_users))
         self.assertTrue((self.root / "csv" / "user.csv").is_file())
         self.assertTrue((self.root / "parquet" / "item.parquet").is_file())
+        # The two latent tables are published in all three formats with the same ids.
+        for table, id_column, motivation in (
+            ("user_latent", "user_id", "user_motivation"),
+            ("item_latent", "item_id", "item_motivation"),
+        ):
+            parquet_latent = pq.read_table(self.root / "parquet" / f"{table}.parquet")
+            with (self.root / "csv" / f"{table}.csv").open(encoding="utf-8", newline="") as stream:
+                csv_latent = list(csv.DictReader(stream))
+            with closing(sqlite3.connect(self.root / "sqlite" / "dataset.sqlite.db")) as connection:
+                sqlite_latent = connection.execute(f"SELECT {id_column}, {motivation} FROM {table}").fetchall()
+            self.assertEqual(set(parquet_latent[id_column].to_pylist()),
+                             {row[id_column] for row in csv_latent})
+            self.assertEqual(set(parquet_latent[id_column].to_pylist()),
+                             {row[0] for row in sqlite_latent})
+            self.assertEqual(len(parquet_latent), len(csv_latent))
+            self.assertEqual(len(parquet_latent), len(sqlite_latent))
+            csv_motivations = {row[id_column]: float(row[motivation]) for row in csv_latent}
+            sqlite_motivations = {row[0]: row[1] for row in sqlite_latent}
+            self.assertEqual(csv_motivations, sqlite_motivations)
+            for key, value in zip(parquet_latent[id_column].to_pylist(),
+                                  parquet_latent[motivation].to_pylist(), strict=True):
+                self.assertAlmostEqual(value, sqlite_motivations[key], places=12)
 
     def test_daily_funnel_sums_match_exported_dates(self):
         config = MarketConfig(days=24, seeker_arrivals=6, job_arrivals=6)

@@ -29,7 +29,7 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 | `extract(rows, horizon, stage, period, as_of, mode, ...)` | `synthetic_funnel.market` の関数。成熟した段階のリスク集合を抽出する。 |
 | `train_warmup_models(rows, seekers, jobs, config, start)` / `score_warmup_referrals(...)` | `synthetic_funnel.market_training` の関数。warmup紹介だけを使う学習と推論。 |
 | `pair_features(seeker_skill, required_skill, desired_salary, offered_salary, wants_remote, allows_remote)` | スキル0〜1、正の給与、リモート希望・可否0または1を受け取り、ペアの特徴辞書を返す。 |
-| `transition_probabilities(config, features, seeker_affinity=0.0, employer_affinity=0.0)` | 段階ごとの `(求職者側確率, 企業側確率)` を返す。両者の積がその段階の条件付き確率。 |
+| `transition_probabilities(config, features, seeker_motivation=0.0, employer_motivation=0.0)` | 段階ごとの `(求職者側確率, 企業側確率)` を返す。両者の積がその段階の条件付き確率。 |
 | `population_rates(config)` | `expected_rates`（参照集団の条件付き平均）、`intercepts`、`reference_rows`、`reference_seed` を持つ `RateAnchor` を返す。 |
 
 確率設定を直接試すときは、`synthetic_funnel.shared` の `ProbabilityConfig` を `transition_probabilities` や `population_rates` に渡せます。既定値は `base_probabilities=(0.01, 0.10, 0.07)`、`probability_half_widths=(0.005, 0.05, 0.035)`、`skill_effects=(2.0, 1.5, 1.0)` です。市場のスコア学習と確率計算はこの共通設定を共有し、市場シミュレーションの乱数系列には影響しません。

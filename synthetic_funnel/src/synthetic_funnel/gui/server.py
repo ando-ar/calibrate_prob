@@ -51,8 +51,8 @@ MARKET_OPTIONAL_INT_FIELDS = {
 TRAINING_WINDOW_HINT = "training_window_days は1以上の整数をカンマ区切りで3つ指定してください"
 MARKET_COUNT_LABELS = {
     "user": "求職者（user）", "item": "求人（item）", "events": "紹介（events）",
-    "events_latent": "events_latent（反実仮）", "user_latent": "user_latent",
-    "item_latent": "item_latent", "daily": "市場日（daily）",
+    "events_latent": "events_latent（反実仮）", "user_latent": "求職者の意欲（user_latent）",
+    "item_latent": "求人の意欲（item_latent）", "daily": "市場日（daily）",
 }
 ERROR_HINTS = (
     ("isoformat", "日時は ISO 8601 形式で指定してください（例: 2024-01-01T00:00:00+09:00）。"),
