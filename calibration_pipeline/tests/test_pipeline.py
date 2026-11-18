@@ -15,7 +15,7 @@ from sqlalchemy.schema import CreateTable
 from sqlalchemy_redshift.dialect import RedshiftDialect_redshift_connector
 
 from calibration_pipeline.cli import main
-from calibration_pipeline.contracts import integer_candidate_ids
+from calibration_pipeline.contracts import categorical_text, integer_candidate_ids
 from calibration_pipeline.evaluation import metrics
 from calibration_pipeline.experiments import (
     JST,
@@ -109,6 +109,33 @@ FROM calibration_candidates ORDER BY candidate_row_id DESC;
         self.assertEqual(main([*self.predict_args, "--train-run", first.name]), 0)
         records = [json.loads((path / "run_metadata.json").read_text()) for path in self.runs("inference")]
         self.assertEqual({row["train_run_id"] for row in records}, {first.name, second.name})
+
+    def test_numeric_categorical_codes_match_their_string_spelling(self):
+        self.sql.write_text(self.sql.read_text().replace(
+            "CASE WHEN i%3=0 THEN NULL WHEN i%3=1 THEN '0' ELSE 'x' END AS category",
+            "CASE WHEN i%3=0 THEN NULL WHEN i%3=1 THEN 1 ELSE 2 END AS category",
+        ), encoding="utf-8")
+        self.prediction_sql.write_text(
+            "SELECT candidate_row_id, score, NULL AS numeric, NULL AS empty_numeric, "
+            "candidate_row_id * 1.0 AS category FROM calibration_candidates ORDER BY candidate_row_id DESC;",
+            encoding="utf-8",
+        )
+        self.assertEqual(main(self.train_args), 0)
+        self.assertEqual(main(self.predict_args), 0)
+        inference_run = self.runs("inference")[0]
+        result = pl.read_csv(inference_run / "output/calibrated_score.csv")
+        self.assertTrue(result["probability"].is_between(0, 1).all())
+        with (self.runs("train")[0] / "output/calibration_model.pkl").open("rb") as stream:
+            model = pickle.load(stream)
+        comparison = self.frame.with_columns(
+            pl.lit(None).alias("numeric"), pl.lit(None).alias("empty_numeric"),
+            pl.Series("category", [0.0, 1.0]),
+        )
+        np.testing.assert_allclose(result["probability"].to_numpy(), model.predict(comparison))
+
+    def test_categorical_rejects_other_column_types(self):
+        with self.assertRaisesRegex(ValueError, "categorical"):
+            categorical_text(pl.Series([datetime(2024, 1, 1)]), "category")
 
     def test_score_only_always_needs_calibration_and_parquet_preserves_types(self):
         self.config.write_text('[model]\nscore="score"\n', encoding="utf-8")
