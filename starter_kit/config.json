@@ -38,6 +38,8 @@
     "participant_learning_offsets": [365, 400],
     "evaluation_day_offsets": [400, 401, 402],
     "evaluation_note": "Proof evaluation days. Production evaluation is offsets [730, 760) (30 days). D_eval_end + H <= observation_end_exclusive holds here: 402 + ~90 < 730.",
+    "evaluation_seeds": [71, 72, 73],
+    "evaluation_seeds_note": "Issue #40: evaluation uses 3-5 seeds (storage constraint ~25GB free); raise arrivals to 100-200/200 instead. Introduction-cap utilisation saturates near 150/150 (~97%), so extra arrivals add little decision mass. See COMPETITION.md sections 3.4, 5.5 and 11 #4.",
     "ranking_rule": "stage_product_times_fee",
     "ranking_alternatives": ["decision_times_fee", "odds_times_fee"],
     "clip_epsilon": 1e-9

@@ -17,7 +17,7 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 | `referrals` | 1人1日あたりの紹介上限。0〜5件、既定5件。 |
 | `training_window_days`, `training_referrals_per_day`, `negative_reservoir_size` | warmup 学習の期間・密度・負例プール。`[1, 30, 365]`、10,000、100,000。 |
 
-流入数はCLIの `--seeker-arrivals` / `--job-arrivals` でも上書きできます。`--run-dir` と `--output --config` のどちらでも使えます。
+流入数はCLIの `--seeker-arrivals` / `--job-arrivals` でも上書きできます。`--run-dir` と `--output --config` のどちらでも使えます。`--seed` で設定の seed を1つだけ上書きでき、`--seeds 71,72,73` で複数 seed を並列生成します（各 seed は `<出力先>/seed-<seed>/` に出力され、単独実行とバイト単位で同一）。並列数は既定で CPU コア数で、`--jobs` で上限を指定します。
 
 ## 公開Python API
 
@@ -25,6 +25,7 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 | --- | --- |
 | `MarketConfig` | 市場の設定データクラス。`seed`、`seeker_arrivals`、`job_arrivals`、`days`、`warmup`、`application_days`、`posting_days`、`referrals`、warmup学習の設定。 |
 | `write_market_dataset(config, output, *, market_start, output_format="sqlite", progress=None)` | 市場をシミュレーションし、warmup学習で全紹介をスコア付けして、新しいディレクトリに5テーブルと `manifest.json` を保存する。manifestの辞書を返す。 |
+| `generate_seeds(config, output, seeds, *, jobs=None, output_format="sqlite", ...)` | 複数 seed を並列生成する。seed ごとに独立プロセスを1つ使い、`output/seed-<n>/` に保存。`{seed: {"output": path, "rows": count}}` を返す。既定の並列数は CPU コア数。 |
 | `simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_index=None, branch_seed=None, daily_stats=None)` | `synthetic_funnel.market` の関数。紹介行と求職者・求人の属性配列を返す。出力せずに検証するときに使う。 |
 | `extract(rows, horizon, stage, period, as_of, mode, ...)` | `synthetic_funnel.market` の関数。成熟した段階のリスク集合を抽出する。 |
 | `train_warmup_models(rows, seekers, jobs, config, start)` / `score_warmup_referrals(...)` | `synthetic_funnel.market_training` の関数。warmup紹介だけを使う学習と推論。 |

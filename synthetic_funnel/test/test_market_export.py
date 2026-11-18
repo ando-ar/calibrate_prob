@@ -374,6 +374,33 @@ class MarketExportTest(unittest.TestCase):
             for event_id, fee in expected.items():
                 self.assertAlmostEqual(fees[event_id], fee, places=12)
 
+    def test_sqlite_indexes_are_created_after_all_inserts(self):
+        # Index maintenance during a bulk insert is expensive; the exporter must
+        # insert every row first and only then build the lookup indexes (issue #40).
+        from synthetic_funnel.export import Table, write_sqlite
+
+        table = Table("user", ("user_id", "occupation"), "user_id")
+        statements = []
+        connect = sqlite3.connect
+
+        def traced_connect(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connection.set_trace_callback(statements.append)
+            return connection
+
+        with patch("synthetic_funnel.export.sqlite3.connect", traced_connect), \
+                patch("synthetic_funnel.export.SQLITE_INDEXES",
+                      ("CREATE INDEX idx_test_user ON user (occupation)",)):
+            with TemporaryDirectory() as root:
+                write_sqlite(Path(root), (table,), [
+                    (table, [{"user_id": f"u{index}", "occupation": "engineer"} for index in range(20)])
+                ])
+        inserts = [index for index, sql in enumerate(statements) if sql.startswith("INSERT INTO")]
+        indexes = [index for index, sql in enumerate(statements) if sql.startswith("CREATE INDEX")]
+        self.assertTrue(inserts)
+        self.assertEqual(len(indexes), 1)
+        self.assertLess(max(inserts), indexes[0])
+
     def test_every_status_code_maps_to_its_enum_text(self):
         count = len(OUTCOME_STATUSES)
         rows = np.zeros(count, dtype=DTYPE)
