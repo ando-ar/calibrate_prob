@@ -1,6 +1,6 @@
 # コンペ仕様（合成データ版）: 期待手数料の最大化
 
-> ステータス: 確定版（issue #33、ユーザー確定事項 2026-11-18 反映）。本ドキュメントは仕様のみで実装を含まない。後続の実装 issue はここを契約として読む。
+> ステータス: 確定版（issue #33、ユーザー確定事項 2026-11-18 反映）。仕様の契約は変わらず、issue #35 でリプレイ機能と評価器 CLI を実装済み（実装状況は §5.2 / §5.5 / §11 を参照）。後続の実装 issue はここを契約として読む。
 > 前提タスク: issue #34（手数料データの追加）は実装済み。§4 の fee 列は定義済みで、手数料は確定的な観測属性として扱う。
 > 並行タスク: issue #32（NG 観測列）は待たない。将来対応は §9 に記載する。
 
@@ -148,6 +148,8 @@
 
 リプレイの実装は後続 issue の契約である。本仕様は入出力と不変条件（同じ seed・同じ提出なら同じ結果であること、候補キーの完全一致、枠ルールの適用）を定義する。
 
+> 実装状況（issue #35）: `synthetic_funnel.market.replay_market` / `ReplayIntroductions` が完全なリプレイを提供する。D_train の凍結状態は「同じ config/seed で day 0 から再シミュレーション」することで再現し、巨大なスナップショットを保存しない（`make_snapshot` / `resume` は明示スナップショット用として残存）。RNG 規律: 方策は紹介の `rng.randrange` 抽選を置き換え、市場ストリームを消費しない。評価日以降の arrival はデータセットの `user` / `item` / `*_latent` 表から再構成した人口スケジュールを使うため、方策が紹介回数を変えても `user_id` / `item_id` とアクターの対応が崩れない。評価器は `python -m synthetic_funnel.market_evaluation evaluate` または `synthetic-competition evaluate`。
+
 ### 5.3 指標の計算
 
 | 指標 | 定義 |
@@ -177,6 +179,8 @@
 - 流入数を増やすなどして候補数を確保してもよい。設定変更は新しい data version として扱う。
 - `evaluation_scope` に `replay_unavailable_single_day_seed_amplified` を記録し、リプレイ版の主指標と直接比較しない。
 
+> 実装状況（issue #35）: フォールバックも実装済み（`evaluate_fallback` / `synthetic-competition evaluate-fallback`）。シードごとの `(manifest, submission)` を JSON spec で受け取り、1 日だけ評価して主指標の平均±標準偏差を集計し、上記 `evaluation_scope` を記録する。推奨シード数は 20 以上（§11 #4）。完全リプレイが利用可能な場合はフォールバックを使わないこと。
+
 ### 5.6 評価器のインターフェース
 
 評価器は運営側スクリプトとして実装し、参加者は実装しない。インターフェースは次のとおりとする。
@@ -191,6 +195,8 @@ synthetic-competition evaluate \
 ```
 
 出力は `metrics.json`、`daily.csv`、`ranked.parquet`、`plots/`（日次手数料推移、累積手数料、capture 曲線。確率列が提出された場合のみ信頼図）とする。同じ入力から同じ出力が得られること（決定論的であること）を契約とする。
+
+> 実装状況（issue #35）: 実装 CLI は `synthetic-competition evaluate --manifest <dataset dir> --submission <file> --output <dir> [--config <json>] [--candidates <file>] [--candidates-latent <file>]`（または `python -m synthetic_funnel.market_evaluation evaluate ...`）。出力は `metrics.json` / `daily.csv` / `ranked.parquet` / `summary.md`。`--config` で `H`（既定3暦月、`120_days` も選択可）、枠パラメータ、`partition_field` を上書きできる。`max_training_rows`（既定300,000）は参加者側の制約であり、運営の評価器では強制しない。フォールバックは `evaluate-fallback --spec <runs.json> --output <dir>`。
 
 ## 6. 提出形式
 
@@ -289,7 +295,7 @@ issue #32 は `events` に `status` / `outcome_dt` / `auto` を追加する（�
 
 | # | 項目 | 推奨 |
 | --- | --- | --- |
-| 1 | リプレイ機能の実装 issue とフォールバック発動の判断 | 実装キックオフで決定し、§5.5 の条件を満たさなければフォールバックへ |
+| 1 | リプレイ機能の実装 issue とフォールバック発動の判断 | **決定済み**: 完全リプレイを実装（issue #35）。フォールバックも §5.5 に従って常時利用可能。 |
 | 2 | `H` の既定（3暦月か120日か） | 3暦月を既定とし、既存互換の120日は config オプション |
 | 3 | `max_training_rows` の既定 | 300,000（50,000〜500,000 を許容） |
 | 4 | フォールバック時のシード数 | 20以上 |

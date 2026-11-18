@@ -32,6 +32,17 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 | `transition_probabilities(config, features, seeker_motivation=0.0, employer_motivation=0.0)` | 段階ごとの `(求職者側確率, 企業側確率)` を返す。両者の積がその段階の条件付き確率。 |
 | `population_rates(config)` | `expected_rates`（参照集団の条件付き平均）、`intercepts`、`reference_rows`、`reference_seed` を持つ `RateAnchor` を返す。 |
 
+## リプレイと評価器（issue #35）
+
+| API / CLI | 入力と返り値 |
+| --- | --- |
+| `ReplayIntroductions(eval_start, eval_end, policy)` | 外部ランキング方策。`policy` は日オフセット → `(求職者index, 求人index)` のリスト。`simulate(..., replay=...)` に渡す。 |
+| `replay_market(config, eval_start=..., eval_end=..., policy=...)` | day 0 から再シミュレーションして方策を適用し、通常の市場と同じ `(rows, seekers, jobs)` を返す。D_train の凍結状態は再シミュレーションで再現し、巨大な状態ファイルは保存しない。 |
+| `synthetic-competition evaluate --manifest <dir> --submission <file> --output <dir>` | 提出をリプレイし、`metrics.json` / `daily.csv` / `ranked.parquet` / `summary.md` を書く（`python -m synthetic_funnel.market_evaluation evaluate ...` でも可）。 |
+| `synthetic-competition evaluate-fallback --spec <runs.json> --output <dir>` | 1日評価を複数シードで実行し、主指標の平均±標準偏差を集計する。 |
+
+方策は紹介の乱数抽選だけを置き換え、ファネルの乱数ストリームは消費しない。評価日以降の arrival はデータセットのテーブルから再構成した人口スケジュールを使うため、提出の `user_id` / `item_id` はリプレイでも同じアクターを指す。詳細は [コンペ仕様](COMPETITION.md) の §5 を参照。
+
 確率設定を直接試すときは、`synthetic_funnel.shared` の `ProbabilityConfig` を `transition_probabilities` や `population_rates` に渡せます。既定値は `base_probabilities=(0.01, 0.10, 0.07)`、`probability_half_widths=(0.005, 0.05, 0.035)`、`skill_effects=(2.0, 1.5, 1.0)` です。市場のスコア学習と確率計算はこの共通設定を共有し、市場シミュレーションの乱数系列には影響しません。
 
 以下を `synthetic_funnel/` で実行します。
