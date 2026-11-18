@@ -2,6 +2,19 @@
 
 既存の予測モデルのスコアを確率に変換するバッチです。応募・書類通過・決定はそれぞれ異なる元モデルとして管理します。たとえば、応募用の二塔モデルを `20261118_twotower_logQcorrection` というexperiment名で登録し、同じ名前で学習と推論を実行します。
 
+## Sphinxドキュメント
+
+clone後は **`calibration_pipeline/docs/html/index.html` をブラウザーで開く**と、日本語の利用ガイド・APIリファレンスを読めます。Pythonの準備やWebサーバーは不要です。
+HTMLもGitに保存しています。再生成する場合は `calibration_pipeline/` で以下を実行します。
+
+```powershell
+uv sync --locked --group docs
+uv run --locked --group docs python dev/build_docs.py
+```
+
+APIはコードから生成し、push・PR時にはGitHub Actionsで自動ビルドします。
+コード変更を監視するローカルプレビューとCI成果物の取得方法は[ドキュメント開発手順](docs/development.md)を参照してください。
+
 ## 実行する
 
 `calibration_pipeline/` で依存関係を準備し、元モデルごとに名前と入力ファイルを渡します。

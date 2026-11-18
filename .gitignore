@@ -14,6 +14,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+calibration_pipeline/docs/_build/
+calibration_pipeline/docs/_generated/
 
 # Credentials and machine-specific configuration
 .env

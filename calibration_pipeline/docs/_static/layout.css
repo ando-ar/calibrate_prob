@@ -1,0 +1,7 @@
+/* Wrap long signatures and Japanese table cells. */
+.rst-content table.docutils :is(th, td),
+.rst-content table.docutils code.literal,
+.rst-content dl.py dt {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

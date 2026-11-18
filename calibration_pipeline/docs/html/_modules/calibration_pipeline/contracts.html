@@ -1,0 +1,281 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="ja" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>calibration_pipeline.contracts &mdash; calibration-pipeline 0.1.0 ドキュメント</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/layout.css?v=82b83b0a" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=1d5d09e3"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../_static/translations.js?v=4755f45a"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="索引" href="../../genindex.html" />
+    <link rel="search" title="検索" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            calibration-pipeline
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">クイックスタート</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guide.html">入力・出力と実行の流れ</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api.html">Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">ドキュメントの更新と自動ビルド</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">calibration-pipeline</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">モジュールコード</a></li>
+      <li class="breadcrumb-item active">calibration_pipeline.contracts</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>calibration_pipeline.contracts のソースコード</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Validate user data and map the SQL result back to the original candidate rows."""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">polars</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pl</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">calibration_pipeline.config</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ID_RANGE</span><span class="p">,</span>
+    <span class="n">ITEM_ID_BASE</span><span class="p">,</span>
+    <span class="n">ROLE</span><span class="p">,</span>
+    <span class="n">ROW_ID</span><span class="p">,</span>
+    <span class="n">USER_ID_BASE</span><span class="p">,</span>
+    <span class="n">Config</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="require">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.require">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">require</span><span class="p">(</span><span class="n">frame</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">columns</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">missing</span> <span class="o">:=</span> <span class="nb">set</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2">: missing columns: </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="numbers">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.numbers">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">numbers</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">converted</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">PolarsError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2">: expected numeric values"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">error</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">converted</span><span class="o">.</span><span class="n">is_finite</span><span class="p">()</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2">: missing or non-finite numeric values"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">converted</span></div>
+
+
+
+<div class="viewcode-block" id="read_candidates">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.read_candidates">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_candidates</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span> <span class="o">==</span> <span class="s2">".parquet"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8-sig"</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">reader</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">reader</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">columns</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">reader</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">columns</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">columns</span><span class="p">))</span> <span class="ow">or</span> <span class="s2">""</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Candidate CSV requires nonempty and unique header names"</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">reader</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">row</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">columns</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Candidate CSV line </span><span class="si">{</span><span class="n">reader</span><span class="o">.</span><span class="n">line_num</span><span class="si">}</span><span class="s2">: wrong number of fields"</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">csv</span><span class="o">.</span><span class="n">Error</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Candidate CSV line </span><span class="si">{</span><span class="n">reader</span><span class="o">.</span><span class="n">line_num</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">error</span>
+    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">infer_schema</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="integer_candidate_ids">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.integer_candidate_ids">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">integer_candidate_ids</span><span class="p">(</span><span class="n">frame</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">csv_input</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+    <span class="n">require</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="p">(</span><span class="s2">"user_id"</span><span class="p">,</span> <span class="s2">"item_id"</span><span class="p">),</span> <span class="s2">"original_score"</span><span class="p">)</span>
+    <span class="n">ids</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">first</span> <span class="ow">in</span> <span class="p">((</span><span class="s2">"user_id"</span><span class="p">,</span> <span class="n">USER_ID_BASE</span><span class="p">),</span> <span class="p">(</span><span class="s2">"item_id"</span><span class="p">,</span> <span class="n">ITEM_ID_BASE</span><span class="p">)):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">frame</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="n">first_digit</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">first</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"original_score: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must be an 8-digit integer starting with </span><span class="si">{</span><span class="n">first_digit</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">if</span> <span class="n">csv_input</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="n">pl</span><span class="o">.</span><span class="n">String</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">values</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="sa">rf</span><span class="s2">"\A</span><span class="si">{</span><span class="n">first_digit</span><span class="si">}</span><span class="s2">[0-9]</span><span class="se">{{</span><span class="s2">7</span><span class="se">}}</span><span class="s2">\z"</span><span class="p">)</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">values</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">is_integer</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">values</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">is_between</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">first</span> <span class="o">+</span> <span class="n">ID_RANGE</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">frame</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="upload_frame">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.upload_frame">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">upload_frame</span><span class="p">(</span><span class="n">original</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+    <span class="n">require</span><span class="p">(</span><span class="n">original</span><span class="p">,</span> <span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">],</span> <span class="s2">"original_score"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">original</span><span class="o">.</span><span class="n">is_empty</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"original_score contains no candidates"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">reserved</span> <span class="o">:=</span> <span class="p">{</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">original</span><span class="o">.</span><span class="n">columns</span><span class="p">}</span> <span class="o">&amp;</span> <span class="p">{</span><span class="n">ROW_ID</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">probability</span><span class="o">.</span><span class="n">lower</span><span class="p">()}:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"original_score already contains reserved columns: </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">reserved</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">({</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">original</span><span class="o">.</span><span class="n">columns</span><span class="p">})</span> <span class="o">!=</span> <span class="n">original</span><span class="o">.</span><span class="n">width</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Candidate column names must be unique ignoring case"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">original</span><span class="o">.</span><span class="n">with_columns</span><span class="p">(</span>
+        <span class="n">pl</span><span class="o">.</span><span class="n">int_range</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">len</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">ROW_ID</span><span class="p">),</span> <span class="n">numbers</span><span class="p">(</span><span class="n">original</span><span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">],</span> <span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="rows_by_role">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.rows_by_role">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">rows_by_role</span><span class="p">(</span><span class="n">rows</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">roles</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">[</span><span class="n">ROLE</span><span class="p">]</span><span class="o">.</span><span class="n">is_in</span><span class="p">(</span><span class="n">roles</span><span class="p">)</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"row_role must be one of </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">roles</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">frames</span> <span class="o">=</span> <span class="p">{</span><span class="n">role</span><span class="p">:</span> <span class="n">rows</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">ROLE</span><span class="p">)</span> <span class="o">==</span> <span class="n">role</span><span class="p">)</span> <span class="k">for</span> <span class="n">role</span> <span class="ow">in</span> <span class="n">roles</span><span class="p">}</span>
+    <span class="k">for</span> <span class="n">role</span><span class="p">,</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">frames</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">is_empty</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">role</span><span class="si">}</span><span class="s2">: no rows returned"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">frames</span></div>
+
+
+
+<div class="viewcode-block" id="training_rows">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.training_rows">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">training_rows</span><span class="p">(</span><span class="n">rows</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+    <span class="n">require</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="p">[</span><span class="n">ROLE</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">label</span><span class="p">,</span> <span class="o">*</span><span class="n">config</span><span class="o">.</span><span class="n">features</span><span class="p">],</span> <span class="s2">"train.sql"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">rows_by_role</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="p">(</span><span class="s2">"train"</span><span class="p">,</span> <span class="s2">"calibrate"</span><span class="p">,</span> <span class="s2">"validation"</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="prediction_rows">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.prediction_rows">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">prediction_rows</span><span class="p">(</span><span class="n">predicted</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">uploaded</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+    <span class="n">require</span><span class="p">(</span><span class="n">predicted</span><span class="p">,</span> <span class="p">[</span><span class="n">ROW_ID</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">,</span> <span class="o">*</span><span class="n">config</span><span class="o">.</span><span class="n">features</span><span class="p">],</span> <span class="s2">"inference SQL"</span><span class="p">)</span>
+    <span class="n">ids</span> <span class="o">=</span> <span class="n">predicted</span><span class="p">[</span><span class="n">ROW_ID</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">ids</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">is_integer</span><span class="p">()</span> <span class="ow">or</span> <span class="n">ids</span><span class="o">.</span><span class="n">null_count</span><span class="p">()</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">uploaded</span><span class="p">)</span> <span class="ow">or</span> <span class="n">ids</span><span class="o">.</span><span class="n">n_unique</span><span class="p">()</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">uploaded</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"predict: candidate_row_id must identify each uploaded row exactly once"</span><span class="p">)</span>
+    <span class="n">ordered</span> <span class="o">=</span> <span class="n">predicted</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">ROW_ID</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">ordered</span><span class="p">[</span><span class="n">ROW_ID</span><span class="p">]</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Int64</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">uploaded</span><span class="p">[</span><span class="n">ROW_ID</span><span class="p">]):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"predict: unknown or missing candidate_row_id"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sql_numbers</span><span class="p">(</span><span class="n">ordered</span><span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">],</span> <span class="s2">"predict score"</span><span class="p">)</span><span class="o">.</span><span class="n">equals</span><span class="p">(</span><span class="n">uploaded</span><span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">]):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"predict: returned score differs from the uploaded score for a candidate_row_id"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ordered</span></div>
+
+
+
+<div class="viewcode-block" id="sql_numbers">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.sql_numbers">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sql_numbers</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">nullable</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Series</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">nullable</span> <span class="ow">and</span> <span class="n">values</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">pl</span><span class="o">.</span><span class="n">Null</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">values</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">values</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">is_numeric</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2">: expected a numeric column"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">nullable</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">numbers</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
+    <span class="n">converted</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">Float64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">converted</span><span class="o">.</span><span class="n">is_finite</span><span class="p">()</span> <span class="o">|</span> <span class="n">converted</span><span class="o">.</span><span class="n">is_nan</span><span class="p">())</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2">: infinite numeric values"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">converted</span></div>
+
+
+
+<div class="viewcode-block" id="labels">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.labels">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">labels</span><span class="p">(</span><span class="n">frame</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">,</span> <span class="n">role</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">sql_numbers</span><span class="p">(</span><span class="n">frame</span><span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">label</span><span class="p">],</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">role</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">y</span><span class="o">.</span><span class="n">is_in</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">role</span><span class="si">}</span><span class="s2">: labels must be binary (0 or 1)"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">role</span> <span class="o">!=</span> <span class="s2">"validation"</span> <span class="ow">and</span> <span class="n">y</span><span class="o">.</span><span class="n">n_unique</span><span class="p">()</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">role</span><span class="si">}</span><span class="s2">: both classes required (n=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)</span><span class="si">}</span><span class="s2">, positives=</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">y</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="model_frame">
+<a class="viewcode-back" href="../../_generated/calibration_pipeline.contracts.html#calibration_pipeline.contracts.model_frame">[ドキュメント]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">model_frame</span><span class="p">(</span><span class="n">frame</span><span class="p">:</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">sql_numbers</span><span class="p">(</span><span class="n">frame</span><span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">],</span> <span class="n">config</span><span class="o">.</span><span class="n">score</span><span class="p">)]</span>
+    <span class="n">columns</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">sql_numbers</span><span class="p">(</span><span class="n">frame</span><span class="p">[</span><span class="n">name</span><span class="p">],</span> <span class="n">name</span><span class="p">,</span> <span class="n">nullable</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">config</span><span class="o">.</span><span class="n">numeric</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">config</span><span class="o">.</span><span class="n">categorical</span><span class="p">:</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">frame</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">dtype</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">String</span><span class="p">,</span> <span class="n">pl</span><span class="o">.</span><span class="n">Null</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: expected a categorical string column"</span><span class="p">)</span>
+        <span class="c1"># A tag on every present value keeps all possible strings distinct from null.</span>
+        <span class="n">columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">lit</span><span class="p">(</span><span class="s2">"1"</span><span class="p">)</span> <span class="o">+</span> <span class="n">pl</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">String</span><span class="p">))</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="s2">"0"</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">to_series</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">pl</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

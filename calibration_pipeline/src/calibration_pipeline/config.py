@@ -14,6 +14,8 @@ ID_RANGE = 10_000_000
 
 @dataclass(frozen=True)
 class Config:
+    """学習・推論で共有する列名、特徴量、評価ビン数の契約。"""
+
     score: str
     label: str
     probability: str
@@ -23,15 +25,23 @@ class Config:
 
     @property
     def features(self) -> tuple[str, ...]:
+        """数値特徴量、カテゴリ特徴量の順で列名を返す。"""
         return (*self.numeric, *self.categorical)
 
 
 def read_config(path: Path) -> dict:
+    """TOMLファイルを辞書として読み込む。"""
     with path.open("rb") as file:
         return tomllib.load(file)
 
 
 def load_config(path: Path) -> Config:
+    """学習TOMLのmodel節を読み込み、列名の重複・予約名・ビン数を検証する。
+
+    ``numeric_features`` と ``categorical_features`` は省略時に空リスト、
+    ``label`` は ``label``、``probability`` は ``calibrated_probability``、
+    ``bins`` は10を使用する。ビン数は2〜100の整数に限る。
+    """
     model = read_config(path)["model"]
     numeric = model.get("numeric_features", [])
     categorical = model.get("categorical_features", [])

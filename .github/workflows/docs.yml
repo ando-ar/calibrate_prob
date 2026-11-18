@@ -1,0 +1,42 @@
+name: Documentation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  calibration-docs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: calibration_pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.30"
+          enable-cache: true
+          cache-dependency-glob: calibration_pipeline/uv.lock
+      - run: uv sync --locked --group docs --python 3.12
+      - name: Build user guide and API reference
+        run: uv run --locked --group docs python dev/build_docs.py
+      - name: Save offline HTML on main
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/html
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: refresh offline HTML"
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: calibration-pipeline-docs
+          path: calibration_pipeline/docs/html
+          if-no-files-found: error
+          retention-days: 14

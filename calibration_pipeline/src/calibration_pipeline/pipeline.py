@@ -32,19 +32,33 @@ from calibration_pipeline.source import DEFAULT_SQL_SEED, connect
 
 @dataclass
 class Calibrator:
+    """列契約と、学習済みCatBoost・Isotonic Regressionを保持するモデル。"""
+
     config: Config
     isotonic: IsotonicRegression
     base: CatBoostClassifier
 
     def input_scores(self, frame: pl.DataFrame) -> np.ndarray:
+        """元スコアと特徴量から、校正前のCatBoost陽性確率を行順に返す。"""
         features = contracts.model_frame(frame, self.config)
         return self.base.predict_proba(features)[:, 1]
 
     def predict(self, frame: pl.DataFrame) -> np.ndarray:
+        """CatBoostの陽性確率をIsotonic Regressionで校正して返す。"""
         return self.isotonic.predict(self.input_scores(frame))
 
 
 def fit(config: Config, frames: dict[str, pl.DataFrame], seed: int) -> Calibrator:
+    """train区分でCatBoostを学習し、calibrate区分でその出力を校正する。
+
+    Args:
+        config: 元スコア、特徴量、ラベルの列契約。
+        frames: 検証済みの ``train`` と ``calibrate`` のDataFrame。
+        seed: CatBoostの乱数seed。
+
+    Returns:
+        学習済みモデル。校正範囲外の入力は端の値にクリップする。
+    """
     base = CatBoostClassifier(
         iterations=200, depth=4, random_seed=seed, allow_writing_files=False, verbose=False, thread_count=1,
     )
@@ -120,6 +134,13 @@ def train(
     experiments_dir: Path, model_name: str, config_path: Path, sql_path: Path,
     *, sqlite: bool = False, seed: int = DEFAULT_SQL_SEED, sqlite_fixture: Path | None = None,
 ) -> Path:
+    """入力を保存し、SQL抽出・学習・評価を実行して学習runのパスを返す。
+
+    ``config_path`` は学習TOML、``sql_path`` はtrain/calibrate/validationを
+    返すSQL。``sqlite=True`` ならSQLiteを、既定では環境変数のRedshiftを使う。
+    ``sqlite_fixture`` を指定するとDBのコピーを入力として保存する。
+    失敗時は例外を送出し、入力と失敗状態をrunに残す。
+    """
     with experiment_run(experiments_dir, model_name, "train", seed=seed, sqlite=sqlite) as run:
         run_dir, output, metadata, hashes = run
         inputs, fixture = snapshot_inputs(run_dir, config_path, sql_path, hashes, sqlite=sqlite,
@@ -138,6 +159,14 @@ def inference(
     *, train_run: str | None = None, sqlite: bool = False, seed: int = DEFAULT_SQL_SEED,
     sqlite_fixture: Path | None = None,
 ) -> Path:
+    """保存済みモデルで候補を校正し、推論runのパスを返す。
+
+    ``original_score`` は候補CSVまたはParquet。``config_path`` は空のTOML、
+    ``sql_path`` は候補の元スコアと特徴量を返すSQLを指定する。
+    ``train_run`` を省略すると、開始時刻が最も新しい成功済み学習runを使う。
+    出力は入力と同じ形式・行順で確率列を追加する。
+    pickleモデルは信頼できるexperimentの保存物のみを使用すること。
+    """
     with experiment_run(experiments_dir, model_name, "inference", seed=seed, sqlite=sqlite) as run:
         run_dir, output, metadata, hashes = run
         # Resolve before copying large inputs so another training job cannot change the selection.
