@@ -15,10 +15,12 @@ TEXT_FIELDS = {
     "event_id", "user_id", "item_id", "failure_stage", "failure_reason",
     "shoukai_dt", "oubo_dt", "shorui_tsuuka_dt", "kettei_dt",
     "latent_oubo_dt", "latent_shorui_tsuuka_dt", "latent_kettei_dt", "arrival_dt", "day_dt",
+    "departure_dt",
 }
 INTEGER_FIELDS = {
     "wants_remote", "allows_remote", "remote_mismatch", "other_applications", "competing_candidates",
-    "occupation", "region", "live_seekers", "live_jobs", "referrals",
+    "occupation", "region", "referrals",
+    "live_users", "live_items", "new_users", "new_items", "applications", "screenings", "decisions",
 }
 
 
