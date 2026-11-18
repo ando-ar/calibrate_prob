@@ -1,0 +1,44 @@
+{
+  "experiment_name": "<experiment_name>",
+  "stage": "<train|select|evaluate>",
+  "run_id": "<yyyyMMdd_HHmmss>",
+  "status": "<planned|succeeded|failed>",
+  "started_at": "<ISO 8601 with offset>",
+  "finished_at": "<ISO 8601 with offset or null>",
+  "author": "<name>",
+  "hypothesis": "<what change is expected to improve the replay fee and why>",
+  "conclusion": "<fill after the run: result, interpretation, next step>",
+  "data_version": {
+    "manifest_sha256": "<sha256 of the distributed manifest.json>",
+    "generator_version": "<synthetic_funnel version>"
+  },
+  "seeds": {
+    "market": 71,
+    "participant": 42,
+    "sql": 42
+  },
+  "config": {
+    "horizon_days": "<3 calendar months or 120>",
+    "max_per_user_per_day": 5,
+    "daily_budget_per_active_user": 5,
+    "daily_budget": null,
+    "max_training_rows": 300000,
+    "extraction_strategy": "<uniform|stage|...; include actual row counts and selection rates>",
+    "ranking_rule": "<p_times_fee|odds_times_fee|other>",
+    "fee_rate": 0.33,
+    "evaluation_scope": "<replay|logged|counterfactual_diagnostic|replay_unavailable_single_day_seed_amplified>"
+  },
+  "input_sha256": {
+    "config.toml": "<sha256>"
+  },
+  "submission_sha256": "<sha256 of submission.parquet; evaluate only>",
+  "baseline_run_id": "<run id of the baseline submission compared against>",
+  "evaluator_version": "<version>",
+  "git_commit": "<commit>",
+  "environment": {
+    "python": "<version>",
+    "packages": "<key package versions>"
+  },
+  "selection_metric": "macro_daily_replay_fee_yen",
+  "metrics_path": "output/metrics.json"
+}
