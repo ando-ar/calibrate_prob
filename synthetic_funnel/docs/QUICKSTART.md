@@ -72,3 +72,25 @@ with closing(sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)) as connection:
 ```powershell
 uv run --locked synthetic-funnel --config "$run/input/config.json" --output "$run/parquet" --format parquet
 ```
+
+## GUIで試す
+
+ブラウザーから条件を入力して生成し、SQLiteの中身や件数を確認できます。`synthetic_funnel/` で以下を実行すると、ブラウザーが自動で開きます（使用中のポートがある場合は別の空きポート）。
+
+```powershell
+uv run --locked python -m synthetic_funnel.gui
+```
+
+操作手順:
+
+1. 「生成」タブで件数・seed・期間・学習用データ件数・`legacy_scores` の有無・出力形式を入力して実行します。既定値は500件の設定例で、`legacy_scores` は無効（出力が速い）です。
+2. 「結果確認」タブで `runs/gui/<タイムスタンプ>/` の一覧からrunを選び、状態・出力先・件数サマリ・テーブルごとの列とサンプル行・manifest・入力configを確認します。閲覧は読み取り専用です。
+3. 「市場」タブでは、既存の `legacy_models.json` を指定して継続市場シミュレーションを実行できます。`legacy_models.json` は「生成」タブで `legacy_scores` を有効にしたrunの `output/` にあります。
+
+結果の見方:
+
+- 生成はCLIと同じ `python -m synthetic_funnel --run-dir ...` を別プロセスで実行します。実行結果は `runs/gui/<タイムスタンプ>/input/config.json` と `output/`（データ + `manifest.json`）に保存され、既存の出力を上書きしません。`input/config.json` を新しい実行ディレクトリに置けばCLIでも同じ条件を再現できます。
+- 紹介件数は設定した件数で、応募・書類通過・決定の件数は標本と観測締切によって減ります。「結果確認」タブの件数サマリには、観測された到達率と生成時の真の条件付き確率を並べて表示します。
+- `events` の日時列は観測締切 `as_of` までに届いた到達だけが入り、`truth` の `p_*` は打ち切りを考えない真の確率です。観測された到達率が真の確率より低くなるのは締切の影響です。
+- `legacy_scores` を有効にすると、出力件数とは別に元モデルの学習用データを `reference_rows` 件分生成します。扱いたい件数と、後段で必要な正例数に応じて設定します。
+- 生成が失敗したときは、画面にCLIのエラーと日本語の補足が表示されます。件数・期間の順序・日時の形式・`reference_rows` が100以上であることを確認してください。

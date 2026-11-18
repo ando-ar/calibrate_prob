@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>synthetic funnel GUI</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: "Yu Gothic UI", Meiryo, system-ui, sans-serif; margin: 0 auto; padding: 0 16px 48px; max-width: 960px; color: #222; background: #fafafa; }
+  header { border-bottom: 2px solid #2c5aa8; padding: 16px 0 8px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; color: #2c5aa8; }
+  header p { margin: 0; font-size: 0.85rem; color: #555; }
+  nav { margin: 16px 0; display: flex; gap: 8px; }
+  nav a { padding: 8px 24px; border-radius: 8px 8px 0 0; text-decoration: none; font-weight: bold; border: 1px solid #ccc; border-bottom: none; background: #eee; color: #555; }
+  nav a.active { background: #2c5aa8; color: #fff; }
+  section.tab.hidden { display: none; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 1.1rem; margin: 0 0 8px; color: #2c5aa8; }
+  .card h3 { font-size: 1rem; margin: 12px 0 6px; color: #2c5aa8; }
+  .banner { background: #ffe9c8; border: 1px solid #e0a040; border-radius: 6px; padding: 8px 12px; }
+  .banner:empty { display: none; }
+  .field { display: block; margin: 10px 0; }
+  .field span { display: block; font-size: 0.8rem; color: #555; margin-bottom: 2px; }
+  .field span.hint { font-size: 0.75rem; color: #777; }
+  .field input, .field select { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
+  .field textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: 0.85rem/1.4 Consolas, monospace; white-space: pre; }
+  button { background: #2c5aa8; color: #fff; border: none; border-radius: 6px; padding: 10px 28px; font: inherit; font-weight: bold; cursor: pointer; margin-top: 8px; }
+  button:hover { background: #1d4488; }
+  button:disabled { background: #8aa4cc; cursor: wait; }
+  .explain { background: #eef3fb; border-color: #b9cbe8; }
+  .explain table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin-top: 8px; }
+  .explain th, .explain td { border: 1px solid #b9cbe8; padding: 4px 8px; text-align: left; vertical-align: top; }
+  .explain th { background: #dde7f5; }
+  code { background: #eee; padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+  .result { border-color: #2c5aa8; }
+  .result pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 8px; overflow-x: auto; font: 0.8rem/1.4 Consolas, monospace; max-height: 320px; }
+  .result p.status { font-weight: bold; margin: 4px 0; }
+  .result p.status.ok { color: #1a7a2e; }
+  .result p.status.fail { color: #b02020; }
+  .result p.hint { color: #b02020; font-weight: bold; }
+  .table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid #ddd; margin-top: 8px; }
+  table { border-collapse: collapse; font-size: 0.8rem; white-space: nowrap; }
+  th, td { border: 1px solid #ddd; padding: 3px 8px; }
+  th { background: #eef3fb; position: sticky; top: 0; }
+  details summary { cursor: pointer; font-size: 0.85rem; color: #2c5aa8; margin: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>synthetic funnel GUI</h1>
+  <p>紹介 → 応募 → 書類通過 → 決定 の合成履歴（と継続市場）を生成し、結果を確認するローカルGUIです。実行は本物のCLI（python -m synthetic_funnel）が別プロセスで動き、完了まで待ちます。</p>
+</header>
+<section class="card explain" style="margin-top:16px">
+  <h2>このツールで何ができる？</h2>
+  <p>職歴のない人材紹介の応募率を研究するための<b>合成データ</b>を作るツールです。実在の求職者・求人データではありません。設定した件数の紹介を、条件付き確率に沿って応募・書類通過・決定まで到達させて生成します。</p>
+  <ol>
+    <li>生成：少量の設定例（既定は500件）で実行し、合成履歴を作ります。</li>
+    <li>結果確認：出力先・テーブル構造・サンプル行・紹介から決定までの件数を確認します。</li>
+    <li>設定と結果の関係：件数・seed・観測締切を変えて再実行し、後段の件数の変化を比べます。</li>
+  </ol>
+  <p>見る上での注意：</p>
+  <ul>
+    <li><code>events</code> の日時列（oubo_dt など）は観測締切 <code>as_of</code> までに観測された到達だけが入ります。<code>truth</code> の <code>p_*</code> はシミュレーター内部の真の確率で、締切で打ち切られた分は観測されません。そのため観測された到達率は真の確率より低くなることがあります。</li>
+    <li>「生成」タブで <code>legacy_scores</code> を有効にすると、出力件数とは別に、元モデル（<code>legacy_models.json</code>）の学習用データを <code>reference_rows</code> 件分生成します。扱いたい件数と、後段で必要な正例数に応じて設定します。</li>
+    <li>「市場」タブは、同じ求職者への複数紹介や市場参加者の退出を含む継続市場シミュレーションです。既存の <code>legacy_models.json</code> が必要です。</li>
+    <li>各実行は <code>runs/gui/&lt;タイムスタンプ&gt;/</code> に <code>input/config.json</code> と <code>output/</code>（データ + <code>manifest.json</code>）を保存し、既存の出力を上書きしません。</li>
+  </ul>
+</section>
+<nav>${nav}</nav>
+<p class="banner">${banner}</p>
+
+<section id="generate" class="tab ${generate_tab_class}">
+  <div class="card explain">
+    <h2>生成で何が起きるか</h2>
+    <table>
+      <tr><th>入力</th><td>紹介件数、seed、紹介期間（referral_start / referral_end）、観測締切（as_of）、学習用データ件数、元モデルスコア生成の有無、出力形式</td></tr>
+      <tr><th>実行</th><td><code>python -m synthetic_funnel --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
+      <tr><th>出力</th><td><code>output/dataset.sqlite.db</code>（SQLiteの場合）+ <code>manifest.json</code>。legacy_scores 有効時は <code>legacy_models.json</code> も出力します。SQLiteには <code>events</code>（紹介ごとの観測履歴）と <code>truth</code>（紹介ごとの真の確率）の2テーブルが入ります。</td></tr>
+    </table>
+    <p>紹介・応募・書類通過・決定の件数は「結果確認」タブで数えられます。後段の件数は標本と観測締切によって減るため、設定した件数と一致するのは紹介だけです。初回は既定値のまま実行して構いません。</p>
+  </div>
+  <div class="card">
+    <h2>合成履歴を生成</h2>
+    <form method="post" action="/">
+      <input type="hidden" name="action" value="generate">
+      ${generate_form}
+      <button type="submit">生成を実行する</button>
+    </form>
+  </div>
+  ${generate_result}
+</section>
+
+<section id="market" class="tab ${market_tab_class}">
+  <div class="card explain">
+    <h2>市場データ生成で何が起きるか</h2>
+    <table>
+      <tr><th>入力</th><td>市場の設定（流入数・日数・紹介上限など）、市場開始日時、既存の <code>legacy_models.json</code> のパス、出力形式</td></tr>
+      <tr><th>実行</th><td><code>python -m synthetic_funnel --market --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
+      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>truth</code>（紹介ごとの真の確率）、<code>seekers</code> / <code>jobs</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫）+ <code>manifest.json</code></td></tr>
+    </table>
+    <p><code>legacy_models.json</code> は通常の紹介履歴で <code>legacy_scores</code> を有効にして実行した run の <code>output/</code> にあります。モデルの学習締切は市場開始 <code>market_start</code> 以前である必要があります。</p>
+    <p>初めて市場データを作る場合は:<ol>
+      <li>「生成」タブで <code>reference_rows</code> より大きな正例を確保できるよう、上級者向けconfigに <code>"base_probabilities": [0.35, 0.45, 0.35]</code>・<code>"probability_half_widths": [0.10, 0.10, 0.10]</code>・<code>"legacy_scores": {"training_rows": 3000}</code> を入れて、legacy_scores を有効にして実行します。</li>
+      <li>「結果確認」タブでその run の出力先を確認し、<code>output/legacy_models.json</code> のパスをこのタブに入れます。</li>
+    </ol></p>
+    <p>詳しいルールはドキュメントの <code>docs/MARKET.md</code> を参照してください。</p>
+  </div>
+  <div class="card">
+    <h2>市場データを生成</h2>
+    <form method="post" action="/">
+      <input type="hidden" name="action" value="market">
+      ${market_form}
+      <button type="submit">市場データを生成する</button>
+    </form>
+  </div>
+  ${market_result}
+</section>
+
+<section id="results" class="tab ${results_tab_class}">
+  <div class="card explain">
+    <h2>結果の確認方法</h2>
+    <p>run一覧から詳細を開くと、状態・出力先・件数サマリ・テーブルごとの列とサンプル行・manifest・入力configを確認できます。閲覧は読み取り専用です（SQLiteは <code>?mode=ro</code> で開きます）。</p>
+    <p>件数サマリでは、紹介→応募→書類通過→決定の観測された到達率と、生成時の真の条件付き確率を並べて見られます。このGUIからの実行は全て <code>runs/gui/</code> の下に残り、input/config.json で再現できます。</p>
+    <p><a href="/?tab=results">一覧を再読み込み</a></p>
+  </div>
+  <div class="card">
+    ${results_content}
+  </div>
+</section>
+
+<script>${submit_script}</script>
+</body>
+</html>

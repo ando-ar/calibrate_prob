@@ -18,6 +18,8 @@ Pythonの依存関係は各パッケージのディレクトリで `uv sync --lo
 
 `synthetic_funnel` が合成履歴・候補を生成し、`calibration_pipeline` が学習・校正・検証と推論を実行します。`product_prototype` は推薦方法や金額を考慮した順位の比較実験用で、このデモの実行には不要です。GUIでは固定fixture DBの構造とデータ例を実行前に確認できます。
 
+合成データの生成そのものをブラウザーで試すには、`synthetic_funnel/` で `uv run --locked python -m synthetic_funnel.gui` を実行します。条件を入力して合成履歴や市場データを生成し、SQLiteの内容・件数・manifestを確認できます。詳しくは[クイックスタートの「GUIで試す」](synthetic_funnel/docs/QUICKSTART.md)を参照してください。
+
 ## Issueベースの開発
 
 1. 作業前にGitHub Issueを作り、目的・変更範囲・完了条件を記載します。
