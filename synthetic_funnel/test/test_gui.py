@@ -236,7 +236,8 @@ class RunInspectionTest(GuiTestCase):
         self.assertIn("run が見つかりません", server.render_run_detail(self.state, ".."))
         self.assertIn("run が見つかりません", server.render_run_detail(self.state, "nope"))
 
-    def test_market_manifest_summary(self):
+    def test_market_counts_table_static_and_dynamic_keys(self):
+        """Guarantee from both former tests: fixed labels/values and dynamic keys."""
         manifest = {"mode": "market", "output_format": "sqlite",
                     "row_counts": {"events": 12, "events_latent": 12, "user": 8, "item": 9, "daily": 90}}
         table = server.market_counts_table(manifest)
@@ -244,7 +245,6 @@ class RunInspectionTest(GuiTestCase):
         self.assertIn("events_latent", table)
         self.assertIn("12", table)
 
-    def test_row_counts_are_dynamic_including_optional_latent_tables(self):
         manifest = {"mode": "market", "row_counts": {
             "events": 3, "events_latent": 3, "user": 2, "item": 2, "daily": 6,
             "user_latent": 2, "item_latent": 2, "future_table": 7,
@@ -311,7 +311,8 @@ class CliFixtureInspectionTest(GuiTestCase):
 
 
 class PageRenderingTest(GuiTestCase):
-    def test_pages_render_all_tabs_with_defaults(self):
+    def test_pages_render_all_tabs_and_market_form_fields(self):
+        """Guarantee from both former tests: tab rendering plus full/legacy-free form."""
         template = server.load_template()
         for tab in ("market", "results"):
             page = server.render_page(self.state, template, tab=tab,
@@ -330,9 +331,6 @@ class PageRenderingTest(GuiTestCase):
                                      results_html="<p>まだ実行がありません。</p>")
         self.assertIn("まだ実行がありません", results)
 
-    def test_market_form_exposes_all_fields_and_no_legacy_fields(self):
-        market = server.render_page(self.state, server.load_template(), tab="market",
-                                    values=server.default_values("market"))
         for name in ("seed", "seeker_arrivals", "job_arrivals", "days", "warmup",
                      "application_days", "posting_days", "referrals", "training_window_days",
                      "training_referrals_per_day", "negative_reservoir_size", "market_start",
