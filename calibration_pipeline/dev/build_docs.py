@@ -1,4 +1,4 @@
-"""Build a clean, offline-readable HTML snapshot for Git."""
+"""Build a clean, offline-readable HTML snapshot for local viewing and CI artifacts."""
 
 import shutil
 import subprocess
