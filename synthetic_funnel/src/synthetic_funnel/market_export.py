@@ -2,7 +2,6 @@
 
 import json
 import math
-import time
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -168,7 +167,6 @@ def write_market_dataset(
     progress: Callable[[int], None] | None = None,
 ):
     """Simulate a market, score every referral via warmup training and publish it."""
-    started = time.perf_counter()
     start = parse_datetime(market_start)
     end = _datetime_at(start, config.days)
     with dataset_staging(output, output_format) as staging:
@@ -189,6 +187,10 @@ def write_market_dataset(
         files = write_rows(staging, output_format, (EVENTS_TABLE, EVENTS_LATENT_TABLE),
                            _event_records(rows, seekers, jobs, start, scores, progress),
                            extra_tables=extra_tables)
+        # The manifest is the competition's data version (its SHA-256), so it must
+        # be byte-identical for identical config/seed.  Timing measurements and
+        # wall-clock timestamps are therefore deliberately excluded (issue #38);
+        # every value below comes from the config, seed or deterministic output.
         manifest = {
             "generator": "synthetic-funnel", "version": VERSION, "mode": "market", "output_format": output_format,
             "config": json.loads(json.dumps(asdict(config))), "market_start": start.isoformat(),
@@ -199,7 +201,6 @@ def write_market_dataset(
             "training": training_info,
             "training_cutoff": training_info["training_cutoff"],
             "warmup_end": training_info["warmup_end"],
-            "generation_seconds": time.perf_counter() - started,
             "probability_scope": "Conditional on the previous phase, evaluated at introduction before future exits "
                                  "or posting expiry; observed dates reflect both market exits and the observation end.",
             "truth_scope": "Counterfactual: one-sided probabilities, latent arrival dates and failure stage/reason "

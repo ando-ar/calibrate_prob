@@ -53,7 +53,7 @@ class CliTest(unittest.TestCase):
         manifest = json.loads((run_dir / "output" / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["config"]["seeker_arrivals"], 4)
         self.assertEqual(manifest["config"]["job_arrivals"], 3)
-        self.assertGreaterEqual(manifest["generation_seconds"], 0)
+        self.assertNotIn("generation_seconds", manifest)  # issue #38: reproducible manifest bytes
         self.assertEqual(json.loads(stdout)["rows"],
                          manifest["row_counts"]["events"])
         self.assertNotIn("legacy_models", manifest)

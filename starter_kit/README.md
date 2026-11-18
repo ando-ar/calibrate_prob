@@ -48,7 +48,9 @@
 
 本番 config は `config.json` の `production_reference` に明示してあります。
 データ version は配布 `manifest.json` の SHA-256 です（この proof では
-`3f55683a09fcda57486d89a8d6534bb21d992a7586d162673539f05353123b75`）。
+`e973aaaac7668ec6ce8099b0be74215aa12d15ddaf1f74991433af0f9d941ea1`）。
+manifest は生成時間などの実行時計測値を含まないため、同一 config/seed なら
+バイト単位で再現します（issue #38）。
 
 ## 2. 環境と再生成
 

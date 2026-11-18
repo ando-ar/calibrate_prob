@@ -24,6 +24,19 @@ INTEGER_FIELDS = {
     "live_users", "live_items", "new_users", "new_items", "applications", "screenings", "decisions",
     "auto",
 }
+# Created on every sqlite export so both the organiser DB and any copy of it
+# inherit the lookups used by the daily-candidate recipe.  The correlated
+# subqueries in market_candidates.DAILY_CANDIDATES_LATENT_SQL probe events by
+# (user_id, item_id) and by user_id/item_id with date predicates; without these
+# indexes each candidate scans the whole events table (issue #38).
+SQLITE_INDEXES = (
+    "CREATE INDEX events_shoukai_dt ON events (shoukai_dt)",
+    "CREATE INDEX idx_events_user ON events (user_id, oubo_dt, kettei_dt, outcome_dt)",
+    "CREATE INDEX idx_events_item ON events (item_id, oubo_dt, kettei_dt, outcome_dt)",
+    "CREATE INDEX idx_events_user_item ON events (user_id, item_id)",
+    "CREATE INDEX idx_user_occupation ON user (occupation, arrival_dt, departure_dt)",
+    "CREATE INDEX idx_item_occupation ON item (occupation, arrival_dt, departure_dt)",
+)
 
 
 @dataclass(frozen=True)
@@ -106,7 +119,8 @@ def write_sqlite(output, tables, records):
             insert_statements[table.name] = f"INSERT INTO {table.name} ({columns}) VALUES ({placeholders})"
         for table, rows in records:
             database.executemany(insert_statements[table.name], typed_rows(rows, table.fields))
-        database.execute("CREATE INDEX events_shoukai_dt ON events (shoukai_dt)")
+        for statement in SQLITE_INDEXES:
+            database.execute(statement)
 
 
 def write_parquet(output, tables, records):

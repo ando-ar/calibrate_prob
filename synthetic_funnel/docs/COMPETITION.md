@@ -81,7 +81,7 @@
 | `referrals` | 5 |
 | `output_format` | sqlite（配布は parquet 可） |
 
-`manifest.json` に config、generator version、各ファイルの SHA-256、`training_cutoff`、`warmup_end`、`observation_end_exclusive` が入る。運営は配布データの manifest ハッシュを data version として公表し、参加者が再現性を確認できるようにする。生成規則や依存環境が変わると同じ seed でも行が変わるため、data version はハッシュで管理する。
+`manifest.json` に config、generator version、各ファイルの SHA-256、`training_cutoff`、`warmup_end`、`observation_end_exclusive` が入る。運営は配布データの manifest ハッシュを data version として公表し、参加者が再現性を確認できるようにする。生成規則や依存環境が変わると同じ seed でも行が変わるため、data version はハッシュで管理する。manifest には生成時間やタイムスタンプのような実行時計測値を含めず、同一 config/seed ならバイト単位で再現する（issue #38）。data version はこの再現可能な manifest 全体の SHA-256 とする。
 
 ### 3.2 学習期間と評価期間（市場時間）
 

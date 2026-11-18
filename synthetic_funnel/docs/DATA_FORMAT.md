@@ -87,7 +87,18 @@ JOIN item_latent AS il USING (item_id)
 
 ## `events` 紹介と観測された結果
 
-1行が紹介1件です。`event_id` は一意で、`events_latent` と1対1に結合できます。同じ `user_id`、`item_id` は複数行に現れます。属性列はマスター結合で取得する設計のため、このテーブルには明確なロジックで計算できる派生特徴量と観測結果だけが入ります。スキル由来の `skill_match` / `skill_shortfall` / `overqualification` は真のスキルが数値で表せないため `events_latent` に移しています。SQLiteでは `events.shoukai_dt` にインデックスがあり、外部キー制約が有効です。
+1行が紹介1件です。`event_id` は一意で、`events_latent` と1対1に結合できます。同じ `user_id`、`item_id` は複数行に現れます。属性列はマスター結合で取得する設計のため、このテーブルには明確なロジックで計算できる派生特徴量と観測結果だけが入ります。スキル由来の `skill_match` / `skill_shortfall` / `overqualification` は真のスキルが数値で表せないため `events_latent` に移しています。SQLiteでは外部キー制約が有効で、以下の読み取り用インデックスが作成されます（issue #38）。運営用 DB と参加者用 DB の両方に含まれます。
+
+| インデックス | 列 | 用途 |
+| --- | --- | --- |
+| `events_shoukai_dt` | `events(shoukai_dt)` | 紹介日の範囲検索。 |
+| `idx_events_user` | `events(user_id, oubo_dt, kettei_dt, outcome_dt)` | 日次候補レシピの `other_applications` 相関サブクエリ。 |
+| `idx_events_item` | `events(item_id, oubo_dt, kettei_dt, outcome_dt)` | 同 `competing_candidates` 相関サブクエリ。 |
+| `idx_events_user_item` | `events(user_id, item_id)` | 同 `NOT EXISTS`（未紹介ペア）検索。 |
+| `idx_user_occupation` | `user(occupation, arrival_dt, departure_dt)` | 候補レシピのユーザー側マスター検索。 |
+| `idx_item_occupation` | `item(occupation, arrival_dt, departure_dt)` | 同求人側マスター検索。 |
+
+`user_latent` / `item_latent` / `events_latent` のキー検索は各テーブルの主キー（`user_id` / `item_id` / `event_id`）に自動生成されたインデックスが使われます。
 
 | 列 | 型 | NULLの意味 | 内容 | 値の例 |
 | --- | --- | --- | --- | --- |
@@ -217,9 +228,10 @@ NULLがなく、`market_start` から観測終了まで1日1行が入ります�
 | `observation_end_exclusive` | 観測の終了境界。`market_start` に `days` を足した日時で、この日時以降の到達は記録しない。 |
 | `training_cutoff` | 学習に使ったwarmup紹介の締切日時。この日時より前の紹介の `model_*_score` はNULL。 |
 | `warmup_end` | warmup期間の終了日時。この日時以降の紹介にスコアが付く。 |
-| `generation_seconds` | データ生成にかかった秒数（計測値）。 |
 | `row_counts` | テーブルごとの件数。`user`、`user_latent`、`item`、`item_latent`、`events`、`events_latent`、`daily`。 |
 | `probability_scope` | 潜在確率の意味づけの注記。 |
 | `files` | 出力ファイルごとのSHA-256。 |
+
+manifest は生成時間やタイムスタンプのような実行時計測値を**含みません**。したがって同一の config・seed・コード・依存環境なら manifest.json はバイト単位で同一になり、その SHA-256 を data version として使えます（issue #38）。計測値を入れると再生成のたびにハッシュが変わり data version が再現しなくなるためです。
 
 同じ条件を再現するときは、設定・seedと使用したコード・依存環境を揃えます。生成規則や乱数の割り当てが変わると、同じseedから生成される行も変わることがあります。

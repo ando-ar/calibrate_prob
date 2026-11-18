@@ -49,12 +49,9 @@ def build(config_path: Path, output_dir: Path, *, force: bool = False) -> None:
         src.backup(dst)
         for table in LATENT_TABLES:
             dst.execute(f"DROP TABLE IF EXISTS {table}")
-        # The daily-candidates recipe has correlated subqueries over events;
-        # these indexes keep it fast for participants on the full-size dataset.
-        dst.execute("CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, oubo_dt, kettei_dt, outcome_dt)")
-        dst.execute("CREATE INDEX IF NOT EXISTS idx_events_item ON events(item_id, oubo_dt, kettei_dt, outcome_dt)")
-        dst.execute("CREATE INDEX IF NOT EXISTS idx_user_occupation ON user(occupation, arrival_dt, departure_dt)")
-        dst.execute("CREATE INDEX IF NOT EXISTS idx_item_occupation ON item(occupation, arrival_dt, departure_dt)")
+        # The candidate-recipe indexes are created at export time in
+        # synthetic_funnel.export.SQLITE_INDEXES, so the backup already has
+        # them on both the organiser DB and this participant copy (issue #38).
         dst.commit()
         dst.execute("VACUUM")
     shutil.copy2(organiser_dir / "manifest.json", participant_dir / "manifest.json")
