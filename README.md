@@ -12,6 +12,12 @@ Pythonの依存関係は各パッケージのディレクトリで `uv sync --lo
 
 校正パイプラインのドキュメントは、clone後に `calibration_pipeline/docs/html/index.html` をブラウザーで開くだけで読めます。生成済みHTMLを同梱しているため、閲覧にPython環境やWebサーバーは不要です。
 
+## 最初に試すデモ
+
+[初回利用ガイド](calibration_pipeline/docs/quickstart.md)では、合成DBの準備 → 内容確認 → 学習 → 推論 → 結果確認をブラウザーで試せます。元スコアは順位づけの値であり、そのまま応募率を意味するとは限りません。デモでは履歴からそのずれを校正し、新しい候補の応募確率を出力します。
+
+`synthetic_funnel` が合成履歴・候補を生成し、`calibration_pipeline` が学習・校正・検証と推論を実行します。`product_prototype` は推薦方法や金額を考慮した順位の比較実験用で、このデモの実行には不要です。GUIでは固定fixture DBの構造とデータ例を実行前に確認できます。
+
 ## Issueベースの開発
 
 1. 作業前にGitHub Issueを作り、目的・変更範囲・完了条件を記載します。
