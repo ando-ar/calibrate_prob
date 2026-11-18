@@ -72,7 +72,7 @@ with closing(sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)) as connection:
 
 `events` の `model_apply_score` などのスコア列は、市場内ウォームアップ学習のモデルが付与します。既定の `warmup` は365日のため、90日などの短い市場ではスコア列がすべてNULLになります。スコアを含めて試すには、`"days": 500` のように warmup より長く生成します。warmup より前の紹介はスコアがNULLのまま出力に含まれます。
 
-求職者と求人の属性は `user` と `item` のマスターにあります。`events` には属性列がないため、次のように結合して確認します。
+求職者と求人の属性は `user` と `item` のマスターにあります。`events` には属性列がなく、スキル由来の `skill_match` は `events_latent` にあるため、次のように結合して確認します。
 
 ```powershell
 @'
@@ -84,8 +84,9 @@ from pathlib import Path
 db = Path(sys.argv[1]).resolve()
 with closing(sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)) as connection:
     rows = connection.execute("""
-        SELECT e.event_id, u.user_skill, i.required_skill, e.skill_match
+        SELECT e.event_id, u.user_skill, i.required_skill, l.skill_match
         FROM events AS e
+        JOIN events_latent AS l USING (event_id)
         JOIN user AS u USING (user_id)
         JOIN item AS i USING (item_id)
         LIMIT 5

@@ -86,16 +86,13 @@ JOIN item_latent AS il USING (item_id)
 
 ## `events` 紹介と観測された結果
 
-1行が紹介1件です。`event_id` は一意で、`events_latent` と1対1に結合できます。同じ `user_id`、`item_id` は複数行に現れます。属性列はマスター結合で取得する設計のため、このテーブルにはペアから計算した特徴量と観測結果だけが入ります。SQLiteでは `events.shoukai_dt` にインデックスがあり、外部キー制約が有効です。
+1行が紹介1件です。`event_id` は一意で、`events_latent` と1対1に結合できます。同じ `user_id`、`item_id` は複数行に現れます。属性列はマスター結合で取得する設計のため、このテーブルには明確なロジックで計算できる派生特徴量と観測結果だけが入ります。スキル由来の `skill_match` / `skill_shortfall` / `overqualification` は真のスキルが数値で表せないため `events_latent` に移しています。SQLiteでは `events.shoukai_dt` にインデックスがあり、外部キー制約が有効です。
 
 | 列 | 型 | NULLの意味 | 内容 | 値の例 |
 | --- | --- | --- | --- | --- |
 | `event_id` | TEXT | なし（主キー） | 紹介イベントのID。 | `market-000000042-0007` |
 | `user_id` | TEXT | なし | 紹介された求職者。`user.user_id` を参照。 | `user-000000042` |
 | `item_id` | TEXT | なし | 紹介された求人。`item.item_id` を参照。 | `item-0007` |
-| `skill_match` | REAL | なし | スキル適合度。`1 - abs(user_skill - required_skill)`。 | `0.93` |
-| `skill_shortfall` | REAL | なし | スキル不足。`max(required_skill - user_skill, 0)`。 | `0.0` |
-| `overqualification` | REAL | なし | スキル過剰。`max(user_skill - required_skill, 0)`。 | `0.07` |
 | `salary_shortfall` | REAL | なし | 給与不足率。`max((desired_salary - offered_salary) / desired_salary, 0)`。 | `0.0` |
 | `remote_mismatch` | INTEGER | なし | リモート条件の不一致。`wants_remote × (1 - allows_remote)`。 | `1` |
 | `other_applications` | INTEGER | なし | 紹介時点の他社応募件数。 | `2` |
@@ -112,11 +109,14 @@ JOIN item_latent AS il USING (item_id)
 
 ## `events_latent` 潜在値（反実仮の真値）
 
-`<stage>` は `application`、`screening`、`decision` のいずれかです。このテーブルの値はすべて紹介時点で確定する潜在値で、退出・掲載期限・相手の退出による選考取消・観測打切りを無視し、紹介後も仲介が継続した場合の真値（反実仮）です。実績の選考取消理由は保存しません。校正やモデル評価の真値との比較、生成器の診断に使います。学習や推論の特徴量は `events` の紹介時点の列とマスター結合した属性から選びます。参加者の隠れた意欲は属性と同じく不変なので、このテーブルには重複して保存しません。`events` から `user` / `item` を経由して `user_latent.user_motivation` / `item_latent.item_motivation` を結合してください。片側確率 `p_candidate_*` / `p_employer_*` と `p_*_eventual` の値は変更ありません。
+`<stage>` は `application`、`screening`、`decision` のいずれかです。このテーブルの値はすべて紹介時点で確定する潜在値で、退出・掲載期限・相手の退出による選考取消・観測打切りを無視し、紹介後も仲介が継続した場合の真値（反実仮）です。実績の選考取消理由は保存しません。校正やモデル評価の真値との比較、生成器の診断に使います。学習や推論の特徴量のうち、給与不足率・リモート不一致・他社応募件数・競合候補者数は明確に計算できるため `events` の紹介時点の列とマスター結合した属性から選びます。`skill_match` / `skill_shortfall` / `overqualification` は真のスキルが数値で表せないため、このテーブルに潜在値として保存します。`user.user_skill` / `item.required_skill` は便宜上の代理値としてマスターに残します。参加者の隠れた意欲は属性と同じく不変なので、このテーブルには重複して保存しません。`events` から `user` / `item` を経由して `user_latent.user_motivation` / `item_latent.item_motivation` を結合してください。片側確率 `p_candidate_*` / `p_employer_*` と `p_*_eventual` の値は変更ありません。
 
 | 列 | 型 | NULLの意味 | 内容 | 値の例 |
 | --- | --- | --- | --- | --- |
 | `event_id` | TEXT | なし（主キー） | `events` と共通の紹介イベントID。 | `market-000000042-0007` |
+| `skill_match` | REAL | なし | スキル適合度。`1 - abs(user_skill - required_skill)`。真のスキルは数値で表せず、マスターの数値スキルは便宜上の代理値なので潜在値として扱う。 | `0.93` |
+| `skill_shortfall` | REAL | なし | スキル不足。`max(required_skill - user_skill, 0)`。代理スキルから計算した潜在値（理由は `skill_match` と同じ）。 | `0.0` |
+| `overqualification` | REAL | なし | スキル過剰。`max(user_skill - required_skill, 0)`。代理スキルから計算した潜在値（理由は `skill_match` と同じ）。 | `0.07` |
 | `p_<stage>_eventual` | REAL | なし | 前段の到達を条件とした、期限を設けない真の移行確率。 | `0.112` |
 | `p_candidate_<stage>` | REAL | なし | 各段階の求職者側の確率。 | `0.310` |
 | `p_employer_<stage>` | REAL | なし | 各段階の企業側の確率。応募は求職者側だけで決まるため、`p_employer_application` は1。 | `0.361` |

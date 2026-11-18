@@ -47,15 +47,16 @@ ITEM_LATENT_TABLE = Table(
 DAILY_TABLE = Table("daily", ("day_dt", "live_users", "live_items", "referrals", "new_users",
                               "new_items", "applications", "screenings", "decisions"), "day_dt")
 EVENTS_TABLE = Table(
-    "events", ("event_id", "user_id", "item_id", "skill_match", "skill_shortfall",
-               "overqualification", "salary_shortfall", "remote_mismatch", "other_applications",
-               "competing_candidates", *MODEL_SCORE_FIELDS, "shoukai_dt", *DATE_COLUMNS),
+    "events", ("event_id", "user_id", "item_id", "salary_shortfall", "remote_mismatch",
+               "other_applications", "competing_candidates", *MODEL_SCORE_FIELDS, "shoukai_dt",
+               *DATE_COLUMNS),
     "event_id",
     (("user_id", USER_TABLE.name, USER_TABLE.key), ("item_id", ITEM_TABLE.name, ITEM_TABLE.key)),
 )
 EVENTS_LATENT_TABLE = Table(
     "events_latent",
-    ("event_id", *(f"p_{stage}_eventual" for stage in STAGES),
+    ("event_id", "skill_match", "skill_shortfall", "overqualification",
+     *(f"p_{stage}_eventual" for stage in STAGES),
      *(f"p_candidate_{stage}" for stage in STAGES), *(f"p_employer_{stage}" for stage in STAGES),
      "failure_stage", "failure_reason",
      "application_screening_gap", "relative_application_screening_gap",
@@ -102,9 +103,10 @@ def _event_records(rows, seekers, jobs, start, scores, progress):
             seeker, job, day = (int(row[key]) for key in ("seeker", "job", "day"))
             event_id = f"market-{seeker:09d}-{job:04d}"
             # Immutable attributes live in the user/item masters, not in events.
+            # Skill-derived features are latent (true skills are not numeric); the
+            # rest are computable from published/observed values and stay in events.
             event = {"event_id": event_id, "user_id": _user_id(seeker), "item_id": _item_id(job)}
-            for field in ("skill_match", "skill_shortfall", "overqualification", "salary_shortfall"):
-                event[field] = float(observed[field][index])
+            event["salary_shortfall"] = float(observed["salary_shortfall"][index])
             for field in ("remote_mismatch", "other_applications", "competing_candidates"):
                 event[field] = int(observed[field][index])
             event["shoukai_dt"] = _datetime_at(start, day + INTRODUCTION_OFFSET_DAYS)
@@ -122,6 +124,10 @@ def _event_records(rows, seekers, jobs, start, scores, progress):
                 application_screening_gap=pa - ps,
                 relative_application_screening_gap=pa / application_base - ps / screening_base,
             )
+            # The numeric user_skill/item_skill in the masters are only proxies;
+            # the latent skill-derived features carry the same values as before.
+            for field in ("skill_match", "skill_shortfall", "overqualification"):
+                truth[field] = float(observed[field][index])
             for stage in STAGES:
                 truth[f"p_candidate_{stage}"] = float(row[f"p_candidate_{stage}"])
                 truth[f"p_employer_{stage}"] = float(row[f"p_employer_{stage}"])

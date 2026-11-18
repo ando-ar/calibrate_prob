@@ -70,8 +70,8 @@ SQLite では `runs/<実行ディレクトリ>/output/dataset.sqlite.db` に次�
 | `item` | 求人の1掲載。`item_id` | 参加日時、要求スキル、提示給与、職種（`occupation`、TEXT・8種類）、地域（`region`、TEXT・8種類）、リモート可否、退出日時。値の一覧は[出力データ仕様](DATA_FORMAT.md)を参照。 |
 | `user_latent` | 求職者の1参加。`user_id` で `user` と1対1 | 参加時に決まり在籍中は不変の隠れた意欲 `user_motivation`。各段階で求職者側のロジットに足される。 |
 | `item_latent` | 求人の1掲載。`item_id` で `item` と1対1 | 参加時に決まり掲載中は不変の隠れた意欲 `item_motivation`。各段階で企業側のロジットに足される。 |
-| `events` | 紹介1件。`event_id` | ユーザと求人のID、紹介時点のペア特徴量、3つの `model_*_score`、紹介および観測された到達日時。 |
-| `events_latent` | 紹介1件。`event_id` で `events` と1対1 | 退出や打切りを無視した各段階の条件付き確率 `p_*_eventual`、片側確率 `p_candidate_*` / `p_employer_*`、応募・通過確率の差、潜在到達日時、失敗段階と理由。参加者の意欲は含めず、`events` から `user` / `item` を経由して `user_latent` / `item_latent` を結合する。 |
+| `events` | 紹介1件。`event_id` | ユーザと求人のID、計算可能な派生特徴量（`salary_shortfall` / `remote_mismatch` / `other_applications` / `competing_candidates`）、3つの `model_*_score`、紹介および観測された到達日時。スキル由来の3特徴量は `events_latent` に移した。 |
+| `events_latent` | 紹介1件。`event_id` で `events` と1対1 | スキル由来の派生特徴量 `skill_match` / `skill_shortfall` / `overqualification`（真のスキルは数値で表せず、マスターの数値スキルは便宜上の代理値）、退出や打切りを無視した各段階の条件付き確率 `p_*_eventual`、片側確率 `p_candidate_*` / `p_employer_*`、応募・通過確率の差、潜在到達日時、失敗段階と理由。参加者の意欲は含めず、`events` から `user` / `item` を経由して `user_latent` / `item_latent` を結合する。 |
 | `daily` | 市場の1日。`day_dt` | 日末の在籍数、当日の流入・紹介・到達件数。 |
 
 日時は `market_start` に経過時間を足し、UTCオフセット付きのISO 8601で保存します。観測終了までに到達が記録されなかった段階はNULL（CSVでは空欄）です。`model_*_score` は warmup で学習したモデルを紹介時点の特徴量で推論した値です。市場の確率や観測結果はスコア入力に使いません。`events_latent` の `p_candidate_*` / `p_employer_*` の積は `p_*_eventual` に等しく、潜在到達日時と失敗段階・理由は退出や掲載期限、選考取消を無視した反実仮の値です。
