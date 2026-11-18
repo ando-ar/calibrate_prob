@@ -19,6 +19,7 @@ import argparse
 import csv
 import json
 import math
+import pickle
 import sqlite3
 import sys
 from collections import defaultdict
@@ -34,6 +35,7 @@ from .market import MarketConfig, ReplayIntroductions, simulate
 from .shared import deadline, file_hash, parse_datetime
 
 SCHEMA_VERSION = 1
+SNAPSHOT_FILENAME = "d_train_market_state.pkl"  # organiser-only; never distributed
 DEFAULT_HORIZON = "3_calendar_months"  # COMPETITION.md §11 recommendation #2
 DEFAULT_MAX_TRAINING_ROWS = 300000     # §11 #3: participant constraint, NOT enforced here
 DEFAULT_FALLBACK_SEEDS = 20            # §11 #4 / §5.5
@@ -216,6 +218,84 @@ def load_population(manifest_dir, fmt, start, *, population_dir=None):
     return {"seekers": seekers, "jobs": jobs, "departure": departure}
 
 
+def _market_signature(config):
+    """Config fields that must match for a persisted D_train state to be reusable."""
+    return (config.seed, config.days, config.seeker_arrivals, config.job_arrivals,
+            config.application_days, config.posting_days, config.referrals)
+
+
+def save_market_state(path, state):
+    """Atomically write a frozen market state (organiser-only, never distributed)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("wb") as stream:
+        pickle.dump(state, stream, protocol=pickle.HIGHEST_PROTOCOL)
+    temporary.replace(path)
+
+
+def load_market_state(path):
+    with Path(path).open("rb") as stream:
+        return pickle.load(stream)
+
+
+def _reusable_state(path, market_config, eval_start):
+    """Load a frozen state only if it is compatible and precedes the evaluation."""
+    if path is None or not Path(path).is_file():
+        return None
+    try:
+        state = load_market_state(path)
+    except (OSError, pickle.UnpicklingError, EOFError, ValueError, AttributeError, TypeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    if (state.get("version") != 1 or state.get("signature") != _market_signature(market_config)
+            or state.get("seed") != market_config.seed):
+        return None
+    day = state.get("day")
+    if type(day) is not int or not 0 <= day < eval_start:
+        return None
+    return state
+
+
+def freeze_market(manifest_dir, output, *, day=None, candidates_path=None,
+                  candidates_latent_path=None, population_dir=None):
+    """Persist the full D_train market state so later replays skip warm simulation.
+
+    ``day`` defaults to the day before the earliest candidate evaluation day.
+    The organiser dataset (with latent motivations) must be reachable so the
+    frozen profiles and RNG stream match a fresh replay (issue #37/#40).
+    """
+    manifest_dir = Path(manifest_dir)
+    manifest = json.loads((manifest_dir / "manifest.json").read_text(encoding="utf-8"))
+    start = parse_datetime(manifest["market_start"])
+    market_config = MarketConfig(**manifest["config"])
+    population = load_population(manifest_dir, manifest.get("output_format", "sqlite"), start,
+                                 population_dir=_resolve_population_dir(
+                                     manifest_dir, candidates_latent_path, population_dir,
+                                     manifest.get("output_format", "sqlite")))
+    if day is None:
+        candidate_dir = Path(candidates_path).parent if candidates_path else manifest_dir
+        candidate_name = Path(candidates_path).stem if candidates_path else "candidates"
+        candidates = read_table(candidate_dir, candidate_name, "parquet")
+        if not candidates:
+            raise ValueError("Cannot infer the freeze day: candidates table is empty")
+        day = min(_day_offset(row["day_dt"], start) for row in candidates) - 1
+    day = int(day)
+    if not 0 <= day < market_config.days - 1:
+        raise ValueError("Freeze day must be inside the configured market horizon")
+    # An empty policy with eval_start=day+1 keeps every simulated day in builtin
+    # mode: the captured RNG/case state is exactly the fresh replay's warm state.
+    replay = ReplayIntroductions(eval_start=day + 1, eval_end=day + 2, policy={})
+    captured = {day: None}
+    simulate(market_config, replay=replay, population=population,
+             state_days=captured, stop_day=day)
+    if day not in captured:
+        raise RuntimeError("Market state was not captured")
+    save_market_state(output, captured[day])
+    return captured[day]
+
+
 SUBMISSION_FIELDS = ("day_dt", "user_id", "item_id", "rank")
 
 
@@ -376,8 +456,14 @@ def _resolve_population_dir(manifest_dir, latent_path, population_dir, fmt="sqli
 
 def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
              candidates_path=None, latent_path=None, day_filter=None,
-             population_dir=None):
-    """Run a full replay evaluation and write the four output artifacts."""
+             population_dir=None, snapshot_path=None):
+    """Run a full replay evaluation and write the four output artifacts.
+
+    ``snapshot_path`` enables D_train state reuse (issue #40 item 4).  On the
+    first evaluation the frozen state is captured there; later submissions
+    load it and skip the warm re-simulation.  A replay from a loaded snapshot
+    is byte-identical to one that re-simulates from day 0.
+    """
     manifest_dir = Path(manifest_dir)
     output_dir = Path(output_dir)
     manifest = json.loads((manifest_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -434,7 +520,21 @@ def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
                                  population_dir=_resolve_population_dir(
                                      manifest_dir, latent_path, population_dir, fmt))
     replay.departure = population["departure"]
-    rows, seekers, jobs = simulate(market_config, replay=replay, population=population)
+    eval_start = min(eval_days)
+    state = _reusable_state(snapshot_path, market_config, eval_start)
+    capture = {} if eval_start < 1 else {eval_start - 1: None}
+    if state is not None:
+        # Skip every warm day: the persisted state already holds the live actor
+        # sets, seen pairs, pending case heap, anchors and both RNG streams.
+        simulate_kwargs = {"warm_state": state}
+    elif eval_start > 0:
+        simulate_kwargs = {"state_days": capture}
+    else:
+        simulate_kwargs = {}
+    rows, seekers, jobs = simulate(market_config, replay=replay, population=population,
+                                   **simulate_kwargs)
+    if snapshot_path is not None and state is None and capture:
+        save_market_state(snapshot_path, next(iter(capture.values())))
 
     replay_partition_day = defaultdict(float)
     replay_positives = 0
@@ -640,6 +740,20 @@ def main(argv=None):
     evaluate_parser.add_argument("--population-dir", type=Path,
                                  help="Organiser dataset with user_latent/item_latent for exact frozen state")
     evaluate_parser.add_argument("--day", type=int, help="Evaluate only this day offset (fallback helper)")
+    evaluate_parser.add_argument("--snapshot", type=Path, default=None,
+                                 help="Reusable D_train market state (created on first use)")
+    freeze_parser = commands.add_parser("freeze",
+                                        help="Persist the frozen D_train market state for replay reuse")
+    freeze_parser.add_argument("--manifest", type=Path, required=True, help="Dataset directory")
+    freeze_parser.add_argument("--output", type=Path, required=True,
+                               help=f"State file (conventionally {SNAPSHOT_FILENAME})")
+    freeze_parser.add_argument("--day", type=int,
+                               help="Freeze day (default: day before earliest candidate day)")
+    freeze_parser.add_argument("--candidates", type=Path, help="Override candidates table path")
+    freeze_parser.add_argument("--candidates-latent", type=Path,
+                               help="Override organizer-only latent table")
+    freeze_parser.add_argument("--population-dir", type=Path,
+                               help="Organiser dataset with user_latent/item_latent for exact frozen state")
     fallback_parser = commands.add_parser("evaluate-fallback",
                                           help="Single-day evaluation amplified over independent seeds")
     fallback_parser.add_argument("--spec", type=Path, required=True,
@@ -651,8 +765,15 @@ def main(argv=None):
         if args.command == "evaluate":
             result = evaluate(args.manifest, args.submission, args.output, config=_load_config(args.config),
                               candidates_path=args.candidates, latent_path=args.candidates_latent,
-                              day_filter=args.day, population_dir=args.population_dir)
+                              day_filter=args.day, population_dir=args.population_dir,
+                              snapshot_path=args.snapshot)
             print(json.dumps({"metrics": result["metrics"], "output": str(args.output.resolve())}))
+        elif args.command == "freeze":
+            state = freeze_market(args.manifest, args.output, day=args.day,
+                                  candidates_path=args.candidates,
+                                  candidates_latent_path=args.candidates_latent,
+                                  population_dir=args.population_dir)
+            print(json.dumps({"day": state["day"], "output": str(args.output.resolve())}))
         else:
             runs = json.loads(args.spec.read_text(encoding="utf-8"))
             result = evaluate_fallback(runs, args.output, config=_load_config(args.config))
