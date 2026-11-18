@@ -2,13 +2,14 @@
 
 import io
 import json
+import sqlite3
 import threading
 import unittest
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Sequence
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import closing, redirect_stderr, redirect_stdout
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -40,7 +41,8 @@ def request(port: int, path: str, form: dict[str, str] | None = None) -> tuple[i
         with urllib.request.urlopen(target) as response:
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as error:
-        return error.code, error.read().decode("utf-8")
+        with error:
+            return error.code, error.read().decode("utf-8")
 
 
 class RecordingRunner:
@@ -83,18 +85,26 @@ class DemoGuiTest(unittest.TestCase):
         self.base = Path(self.temporary.name)
         train_dir = self.base / "examples" / "sqlite" / "train"
         train_dir.mkdir(parents=True)
+        self.fixture = train_dir / "sqlite_fixture.db"
+        with closing(sqlite3.connect(self.fixture)) as connection, connection:
+            connection.execute('CREATE TABLE events (user_id INTEGER, note TEXT)')
+            connection.executemany('INSERT INTO events VALUES (?, ?)', [(i, '<script>alert(1)</script>') for i in range(12)])
+            connection.execute('CREATE VIEW scored_referrals AS SELECT * FROM events')
         (train_dir / "config.toml").write_text('[model]\nscore="score"\n', encoding="utf-8")
         (train_dir / "train.sql").write_text("-- example train sql\n", encoding="utf-8")
         (self.base / "examples" / "sqlite" / "inference").mkdir(parents=True)
         self.runner: RecordingRunner = RecordingRunner([])
         self.port, self.server = serve_demo(self.base, self.runner)
+        self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
     def restart(self, runner: RecordingRunner) -> None:
         """Restart the demo server with another runner."""
         self.server.shutdown()
+        self.server.server_close()
         self.runner = runner
         self.port, self.server = serve_demo(self.base, runner)
+        self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
     def get(self, path: str) -> tuple[int, str]:
@@ -167,7 +177,7 @@ class FormActionTest(DemoGuiTest):
         self.assertIn("--sqlite", command)
         self.assertIn("--seed", command)
         self.assertIn("42", command)
-        self.assertNotIn("--sqlite-fixture", command)
+        self.assertEqual(command[command.index("--sqlite-fixture") + 1], str(self.fixture))
         self.assertIn(str(self.base / "experiments" / "demo_gui"), command)
         staging = self.base / ".demo_staging"
         self.assertEqual(list(staging.iterdir()) if staging.exists() else [], [])
@@ -179,7 +189,8 @@ class FormActionTest(DemoGuiTest):
         self.post(self.base_form() | {"fixture_path": str(fixture)})
         command = self.runner.calls[0]
         self.assertIn("--sqlite-fixture", command)
-        self.assertIn(str(fixture), command)
+        self.assertEqual(command[command.index("--sqlite-fixture") + 1], str(self.fixture))
+        self.assertNotIn(str(fixture), command)
 
     def test_train_requires_model_name(self):
         status, body = self.post(self.base_form() | {"model_name": " "})
@@ -194,9 +205,10 @@ class FormActionTest(DemoGuiTest):
         self.assertEqual(self.runner.calls, [])
 
     def test_train_requires_existing_fixture(self):
+        self.fixture.unlink()
         status, body = self.post(self.base_form() | {"fixture_path": str(self.base / "missing.db")})
         self.assertEqual(status, 200)
-        self.assertIn("sqlite fixture が見つかりません", body)
+        self.assertIn("固定fixture DBを読み取れません", body)
         self.assertEqual(self.runner.calls, [])
 
     def test_successful_train_renders_metrics_and_plot(self):
@@ -268,9 +280,11 @@ class FormActionTest(DemoGuiTest):
         self.post(form)
         command = self.runner.calls[0]
         self.assertIn("--sqlite-fixture", command)
-        self.assertIn(str(fixture), command)
+        self.assertEqual(command[command.index("--sqlite-fixture") + 1], str(self.fixture))
+        self.assertNotIn(str(fixture), command)
 
     def test_inference_requires_existing_fixture(self):
+        self.fixture.unlink()
         original = self.base / "original_score.csv"
         original.write_text("user_id,item_id\n", encoding="utf-8")
         status, body = self.post(self.base_form() | {
@@ -279,7 +293,7 @@ class FormActionTest(DemoGuiTest):
             "fixture_path": str(self.base / "missing.db"),
         })
         self.assertEqual(status, 200)
-        self.assertIn("sqlite fixture が見つかりません", body)
+        self.assertIn("固定fixture DBを読み取れません", body)
         self.assertEqual(self.runner.calls, [])
 
     def test_inference_requires_existing_original_score(self):
@@ -344,7 +358,9 @@ FROM calibration_candidates ORDER BY candidate_row_id DESC;
 
     def test_train_and_inference_run_end_to_end(self):
         self.restart_in_process()
-        status, body = self.post(self.base_form())
+        form = self.base_form()
+        form["train_config"] = form["train_config"].replace("\n", "\r\n")
+        status, body = self.post(form)
         self.assertEqual(status, 200)
         self.assertIn("成功", body, body)
         self.assertIn("catboost_isotonic", body)
@@ -372,3 +388,65 @@ FROM calibration_candidates ORDER BY candidate_row_id DESC;
         self.assertEqual(status, 200)
         self.assertIn("失敗", body)
         self.assertIn("calibration-pipeline:", body)
+
+
+class FixtureInspectionTest(DemoGuiTest):
+    def test_inspection_is_bounded_escaped_and_read_only(self):
+        before = self.fixture.read_bytes()
+        status, body = self.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("events (table) — 12 件", body)
+        self.assertIn("scored_referrals (view) — 12 件", body)
+        self.assertIn("INTEGER", body)
+        self.assertIn("サンプル 5 件", body)
+        self.assertNotIn("<script>alert(1)</script>", body)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", body)
+        self.assertNotIn('name="fixture_path"', body)
+        self.assertEqual(before, self.fixture.read_bytes())
+
+    def test_missing_database_is_not_created(self):
+        self.fixture.unlink()
+        status, body = self.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("prepare_example.py", body)
+        self.assertIn("固定fixture DBを読み取れません", body)
+        self.assertFalse(self.fixture.exists())
+
+    def test_corrupt_database_blocks_both_actions(self):
+        self.fixture.write_bytes(b"not a sqlite database")
+        original = self.base / "original.csv"
+        original.write_text("user_id,item_id\n", encoding="utf-8")
+        for action in ("train", "inference"):
+            _, body = self.post(self.base_form() | {"action": action, "original_score": str(original)})
+            self.assertIn("固定fixture DBを読み取れません", body)
+            self.assertIn("読み取り権限", body)
+        self.assertEqual(self.runner.calls, [])
+
+    def test_quoted_names_empty_tables_and_nulls(self):
+        with closing(sqlite3.connect(self.fixture)) as connection, connection:
+            connection.execute('CREATE TABLE "odd""name" (value TEXT)')
+            connection.execute('INSERT INTO "odd""name" VALUES (NULL)')
+            connection.execute('CREATE TABLE empty_table (value REAL)')
+        _, body = self.get("/")
+        self.assertIn("odd&quot;name", body)
+        self.assertIn("empty_table (table) — 0 件", body)
+        self.assertIn("<td>NULL</td>", body)
+
+    def test_prepare_refreshes_inspection(self):
+        script = self.base / "examples" / "sqlite" / "prepare_example.py"
+        script.write_text("# stub", encoding="utf-8")
+        def prepare(command: Sequence[str]) -> CommandResult:
+            with closing(sqlite3.connect(self.fixture)) as connection, connection:
+                connection.execute("CREATE TABLE generated (id INTEGER)")
+            return CommandResult(list(command), 0, "", "")
+        self.restart(RecordingRunner(function=prepare))
+        _, body = self.post({"action": "prepare"})
+        self.assertIn("generated (table) — 0 件", body)
+        self.assertIn("学習へ進んでください", body)
+
+    def test_documentation_route_stays_inside_docs(self):
+        docs = self.base / "docs" / "html"
+        docs.mkdir(parents=True)
+        (docs / "quickstart.html").write_text("<p>guide</p>", encoding="utf-8")
+        self.assertEqual(self.get("/docs/quickstart.html"), (200, "<p>guide</p>"))
+        self.assertEqual(self.get("/docs/../../examples/sqlite/train/config.toml")[0], 404)

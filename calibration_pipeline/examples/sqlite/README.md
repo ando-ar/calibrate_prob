@@ -29,3 +29,12 @@ uv run --locked python examples/sqlite/prepare_example.py
 ```
 
 `experiments/example_oubo/` の設定・SQL・CSV・評価指標・プロット・メタデータは保存します。DBとモデルは除外します。このページの学習・推論コマンドで新しいrunにDBとモデルを作成できます。保存済みメタデータは当時の記録です。再実行時には別のrun ID・ハッシュが記録されます。他のexperimentはignore対象です。
+
+
+## 実行前に固定fixture DBを見る
+
+`uv run --locked python -m calibration_pipeline.demo_gui` でGUIを開くと、固定の `examples/sqlite/train/sqlite_fixture.db` の絶対パス、テーブル・ビュー一覧、列名・型、件数、最大5行のサンプルを確認できます。閲覧は読み取り専用で、GUIの学習・推論でも同じ固定DBを使用します。GUIからDBパスを変更する機能はありません。
+
+初回は **準備 → 内容確認 → 学習 → 推論 → 結果確認** の順に進めます。DBが無い・開けない場合は生成コマンドまたはGUIの「fixtureを再生成する」を使い、必要に応じて読み取り権限を確認してください。再生成は既存のDB・候補CSV・manifestを置き換えます。
+
+DBは合成データです。`events` が元のイベント履歴、`scored_referrals` がID・日時・応募スコアを整えたビュー、`user_feature_daily` が日付ごとの `seeker_skill` 特徴量です。学習SQLが `label` と `row_role` を作り、推論SQLが候補CSV由来の一時テーブル `calibration_candidates` と特徴量を結合します。詳細な列の意味と結果の読み方は[初回利用ガイド](../../docs/quickstart.md)を参照してください。
