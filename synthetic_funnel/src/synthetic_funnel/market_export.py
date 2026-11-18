@@ -20,7 +20,13 @@ from .generator import (
     file_hash,
     parse_datetime,
 )
-from .market import INTRODUCTION_OFFSET_DAYS, MarketConfig, features, simulate
+from .market import (
+    FAILURE_REASONS,
+    INTRODUCTION_OFFSET_DAYS,
+    MarketConfig,
+    features,
+    simulate,
+)
 
 USER_TABLE = Table(
     "user", ("user_id", "arrival_dt", "user_skill", "desired_salary", "occupation", "region",
@@ -154,6 +160,15 @@ def _event_records(rows, seekers, jobs, start, bundle, progress):
                 application_screening_gap=pa - ps,
                 relative_application_screening_gap=pa / application_base - ps / screening_base,
             )
+            for stage in STAGES:
+                truth[f"p_candidate_{stage}"] = float(row[f"p_candidate_{stage}"])
+                truth[f"p_employer_{stage}"] = float(row[f"p_employer_{stage}"])
+            failure_stage = int(row["failure_stage"])
+            truth["failure_stage"] = "" if failure_stage == 0 else STAGES[failure_stage - 1]
+            truth["failure_reason"] = "" if failure_stage == 0 else FAILURE_REASONS[int(row["failure_reason"])]
+            for column in DATE_COLUMNS:
+                value = float(row[f"latent_{column}"])
+                truth[f"latent_{column}"] = _datetime_at(start, value) if math.isfinite(value) else None
             yield event, truth
         if progress is not None:
             progress(offset + len(batch))
@@ -196,6 +211,9 @@ def write_market_dataset(
             "legacy_models": {"method": bundle["method"], **model_source},
             "probability_scope": "Conditional on the previous phase, evaluated at introduction before future exits "
                                  "or posting expiry; observed dates reflect both market exits and the observation end.",
+            "truth_scope": "Counterfactual: one-sided probabilities, latent arrival dates and failure stage/reason "
+                           "record the funnel continuation ignoring market exits, posting expiry and cancellations; "
+                           "stages the counterfactual never reaches stay NULL.",
             "files": {name: file_hash(staging / name) for name in files},
         }
         (staging / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
