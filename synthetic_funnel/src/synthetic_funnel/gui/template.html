@@ -48,61 +48,35 @@
 <body>
 <header>
   <h1>synthetic funnel GUI</h1>
-  <p>紹介 → 応募 → 書類通過 → 決定 の合成履歴（と継続市場）を生成し、結果を確認するローカルGUIです。実行は本物のCLI（python -m synthetic_funnel）が別プロセスで動き、完了まで待ちます。</p>
+  <p>求職者と求人が毎日入れ替わる継続市場から、紹介→応募→書類通過→決定の合成履歴を生成し、結果を確認するローカルGUIです。実行は本物のCLI（python -m synthetic_funnel）が別プロセスで動き、完了まで待ちます。</p>
 </header>
 <section class="card explain" style="margin-top:16px">
   <h2>このツールで何ができる？</h2>
-  <p>職歴のない人材紹介の応募率を研究するための<b>合成データ</b>を作るツールです。実在の求職者・求人データではありません。設定した件数の紹介を、条件付き確率に沿って応募・書類通過・決定まで到達させて生成します。</p>
+  <p>職歴のない人材紹介の応募率を研究するための<b>合成データ</b>を作るツールです。実在の求職者・求人データではありません。市場のルールに従って毎日の流入と紹介をシミュレーションし、観測された結果と反実仮の真の確率を同時に出力します。</p>
   <ol>
-    <li>生成：少量の設定例（既定は500件）で実行し、合成履歴を作ります。</li>
+    <li>生成：少量の設定例（既定は90日・流入8件/日）で実行し、市場データを作ります。</li>
     <li>結果確認：出力先・テーブル構造・サンプル行・紹介から決定までの件数を確認します。</li>
-    <li>設定と結果の関係：件数・seed・観測締切を変えて再実行し、後段の件数の変化を比べます。</li>
+    <li>設定と結果の関係：日数・流入数・seed・warmup を変えて再実行し、結果の変化を比べます。</li>
   </ol>
   <p>見る上での注意：</p>
   <ul>
-    <li><code>events</code> の日時列（oubo_dt など）は観測締切 <code>as_of</code> までに観測された到達だけが入ります。<code>truth</code> の <code>p_*</code> はシミュレーター内部の真の確率で、締切で打ち切られた分は観測されません。そのため観測された到達率は真の確率より低くなることがあります。</li>
-    <li>「生成」タブで <code>legacy_scores</code> を有効にすると、出力件数とは別に、元モデル（<code>legacy_models.json</code>）の学習用データを <code>reference_rows</code> 件分生成します。扱いたい件数と、後段で必要な正例数に応じて設定します。</li>
-    <li>「市場」タブは、同じ求職者への複数紹介や市場参加者の退出を含む継続市場シミュレーションです。既存の <code>legacy_models.json</code> が必要です。</li>
+    <li><code>events</code> の日時列（oubo_dt など）は市場の退出や掲載期限、観測締切の影響を受けた到達だけが入ります。<code>events_latent</code> の <code>p_*</code> と潜在日時は、これらの影響を無視した反実仮の値です。</li>
+    <li>スコアは市場内の warmup 期間で学習したモデルから付与されます。warmup 中の紹介のスコア列はNULLです。</li>
     <li>各実行は <code>runs/gui/&lt;タイムスタンプ&gt;/</code> に <code>input/config.json</code> と <code>output/</code>（データ + <code>manifest.json</code>）を保存し、既存の出力を上書きしません。</li>
   </ul>
 </section>
 <nav>${nav}</nav>
 <p class="banner">${banner}</p>
 
-<section id="generate" class="tab ${generate_tab_class}">
-  <div class="card explain">
-    <h2>生成で何が起きるか</h2>
-    <table>
-      <tr><th>入力</th><td>紹介件数、seed、紹介期間（referral_start / referral_end）、観測締切（as_of）、学習用データ件数、元モデルスコア生成の有無、出力形式</td></tr>
-      <tr><th>実行</th><td><code>python -m synthetic_funnel --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
-      <tr><th>出力</th><td><code>output/dataset.sqlite.db</code>（SQLiteの場合）+ <code>manifest.json</code>。legacy_scores 有効時は <code>legacy_models.json</code> も出力します。SQLiteには <code>events</code>（紹介ごとの観測履歴）と <code>truth</code>（紹介ごとの真の確率）の2テーブルが入ります。</td></tr>
-    </table>
-    <p>紹介・応募・書類通過・決定の件数は「結果確認」タブで数えられます。後段の件数は標本と観測締切によって減るため、設定した件数と一致するのは紹介だけです。初回は既定値のまま実行して構いません。</p>
-  </div>
-  <div class="card">
-    <h2>合成履歴を生成</h2>
-    <form method="post" action="/">
-      <input type="hidden" name="action" value="generate">
-      ${generate_form}
-      <button type="submit">生成を実行する</button>
-    </form>
-  </div>
-  ${generate_result}
-</section>
-
 <section id="market" class="tab ${market_tab_class}">
   <div class="card explain">
     <h2>市場データ生成で何が起きるか</h2>
     <table>
-      <tr><th>入力</th><td>市場の設定（流入数・日数・紹介上限など）、市場開始日時、既存の <code>legacy_models.json</code> のパス、出力形式</td></tr>
-      <tr><th>実行</th><td><code>python -m synthetic_funnel --market --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
-      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの真の確率）、<code>user</code> / <code>item</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫とファネル）+ <code>manifest.json</code></td></tr>
+      <tr><th>入力</th><td>市場の設定（流入数・日数・warmup・紹介上限など）、市場開始日時、出力形式</td></tr>
+      <tr><th>実行</th><td><code>python -m synthetic_funnel --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
+      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの反実仮の真値）、<code>user</code> / <code>item</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫とファネル）+ <code>manifest.json</code></td></tr>
     </table>
-    <p><code>legacy_models.json</code> は通常の紹介履歴で <code>legacy_scores</code> を有効にして実行した run の <code>output/</code> にあります。モデルの学習締切は市場開始 <code>market_start</code> 以前である必要があります。</p>
-    <p>初めて市場データを作る場合は:<ol>
-      <li>「生成」タブで <code>reference_rows</code> より大きな正例を確保できるよう、上級者向けconfigに <code>"base_probabilities": [0.35, 0.45, 0.35]</code>・<code>"probability_half_widths": [0.10, 0.10, 0.10]</code>・<code>"legacy_scores": {"training_rows": 3000}</code> を入れて、legacy_scores を有効にして実行します。</li>
-      <li>「結果確認」タブでその run の出力先を確認し、<code>output/legacy_models.json</code> のパスをこのタブに入れます。</li>
-    </ol></p>
+    <p>スコアは外部モデルファイルではなく、市場自身の warmup 紹介から学習します。warmup が生成日数以上のときは、すべてのスコア列がNULLになります。</p>
     <p>詳しいルールはドキュメントの <code>docs/MARKET.md</code> を参照してください。</p>
   </div>
   <div class="card">
@@ -120,7 +94,7 @@
   <div class="card explain">
     <h2>結果の確認方法</h2>
     <p>run一覧から詳細を開くと、状態・出力先・件数サマリ・テーブルごとの列とサンプル行・manifest・入力configを確認できます。閲覧は読み取り専用です（SQLiteは <code>?mode=ro</code> で開きます）。</p>
-    <p>件数サマリでは、紹介→応募→書類通過→決定の観測された到達率と、生成時の真の条件付き確率を並べて見られます。このGUIからの実行は全て <code>runs/gui/</code> の下に残り、input/config.json で再現できます。</p>
+    <p>件数サマリでは、紹介→応募→書類通過→決定の観測された到達と、テーブルごとの件数を確認できます。このGUIからの実行は全て <code>runs/gui/</code> の下に残り、input/config.json で再現できます。</p>
     <p><a href="/?tab=results">一覧を再読み込み</a></p>
   </div>
   <div class="card">

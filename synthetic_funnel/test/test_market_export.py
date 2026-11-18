@@ -9,13 +9,7 @@ from tempfile import TemporaryDirectory
 
 import pyarrow.parquet as pq
 
-from synthetic_funnel import (
-    Config,
-    LegacyScores,
-    MarketConfig,
-    write_dataset,
-    write_market_dataset,
-)
+from synthetic_funnel import MarketConfig, write_market_dataset
 
 MARKET_START = "2024-01-01T00:00:00+09:00"
 
@@ -26,13 +20,6 @@ class MarketExportTest(unittest.TestCase):
         directory = TemporaryDirectory()
         cls.addClassCleanup(directory.cleanup)
         cls.root = Path(directory.name)
-        model_run = cls.root / "model"
-        write_dataset(
-            Config(rows=2, reference_rows=1000, base_probabilities=(0.35, 0.45, 0.35),
-                   probability_half_widths=(0.1, 0.1, 0.1), legacy_scores=LegacyScores(training_rows=3000)),
-            model_run,
-        )
-        cls.model_path = model_run / "legacy_models.json"
 
     def test_three_formats_share_keys_and_truth_is_counterfactual(self):
         config = MarketConfig(days=60, seeker_arrivals=3, job_arrivals=4)
@@ -40,7 +27,7 @@ class MarketExportTest(unittest.TestCase):
         for output_format in ("sqlite", "parquet", "csv"):
             manifests[output_format] = write_market_dataset(
                 config, self.root / output_format, market_start=MARKET_START,
-                legacy_models=self.model_path, output_format=output_format)
+                output_format=output_format)
 
         with closing(sqlite3.connect(self.root / "sqlite" / "dataset.sqlite.db")) as connection:
             connection.row_factory = sqlite3.Row
@@ -102,7 +89,7 @@ class MarketExportTest(unittest.TestCase):
                         self.assertGreaterEqual(moment, previous)
                         previous = moment
             self.assertTrue(any(row["failure_stage"] == "application" for row in truth))
-            self.assertTrue(all(0 <= row["model_decision_score"] <= 1 for row in rows))
+            self.assertTrue(all(row["model_decision_score"] is None for row in rows))
             self.assertFalse(any(
                 name in rows[0].keys() for name in
                 ("seeker_skill", "required_skill", "desired_salary", "offered_salary",
@@ -120,6 +107,12 @@ class MarketExportTest(unittest.TestCase):
                              connection.execute("SELECT count(*) FROM item").fetchone()[0])
             self.assertEqual(manifest["row_counts"]["daily"], config.days)
             self.assertIn("truth_scope", manifest)
+            self.assertIn("probability_scope", manifest)
+            self.assertIn("training", manifest)
+            self.assertIsInstance(manifest["generation_seconds"], float)
+            self.assertGreaterEqual(manifest["generation_seconds"], 0)
+            self.assertNotIn("legacy_models", manifest)
+            self.assertNotIn("retention", manifest)
 
         parquet = pq.read_table(self.root / "parquet" / "events.parquet")
         with (self.root / "csv" / "events.csv").open(encoding="utf-8", newline="") as stream:
@@ -136,23 +129,32 @@ class MarketExportTest(unittest.TestCase):
         self.assertTrue((self.root / "csv" / "user.csv").is_file())
         self.assertTrue((self.root / "parquet" / "item.parquet").is_file())
 
-    def test_rejects_cutoff_after_market_start_without_publishing_output(self):
-        output = self.root / "too-early"
-        with self.assertRaisesRegex(ValueError, "training_cutoff must be at or before market_start"):
-            write_market_dataset(MarketConfig(days=1), output, market_start="2023-12-31T14:59:59+00:00",
-                                 legacy_models=self.model_path)
+    def test_manifest_is_identical_across_formats_except_timing_and_files(self):
+        config = MarketConfig(days=20, seeker_arrivals=3, job_arrivals=4, seed=5)
+        manifests = [
+            write_market_dataset(config, self.root / f"same-{fmt}", market_start=MARKET_START,
+                                 output_format=fmt)
+            for fmt in ("sqlite", "parquet", "csv")
+        ]
+        for manifest in manifests:
+            self.assertEqual(manifests[0]["row_counts"], manifest["row_counts"])
+            self.assertEqual(manifests[0]["training"], manifest["training"])
+        self.assertEqual(
+            json.loads((self.root / "same-csv" / "manifest.json").read_text(encoding="utf-8")),
+            manifests[2],
+        )
+
+    def test_invalid_market_start_leaves_no_published_dataset(self):
+        output = self.root / "bad-start"
+        with self.assertRaises(ValueError):
+            write_market_dataset(MarketConfig(days=1), output, market_start="2024-01-01T00:00:00")
         self.assertFalse(output.exists())
 
-    def test_rejects_malformed_model_even_when_market_has_no_referrals(self):
-        model = json.loads(self.model_path.read_text(encoding="utf-8"))
-        model["models"][0]["scale"][0] = 0.0
-        invalid = self.root / "invalid.json"
-        invalid.write_text(json.dumps(model), encoding="utf-8")
-        output = self.root / "invalid"
-        with self.assertRaisesRegex(ValueError, "needs positive scales"):
-            write_market_dataset(MarketConfig(days=1, referrals=0), output, market_start=MARKET_START,
-                                 legacy_models=invalid)
-        self.assertFalse(output.exists())
+    def test_existing_output_is_not_overwritten(self):
+        output = self.root / "exists"
+        output.mkdir()
+        with self.assertRaises(FileExistsError):
+            write_market_dataset(MarketConfig(days=1), output, market_start=MARKET_START)
 
 
 if __name__ == "__main__":

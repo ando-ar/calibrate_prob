@@ -1,60 +1,51 @@
 # 設定とPython API
 
-## 設定リファレンス
+生成モードは継続市場のみです。固定件数の行ベース生成（`Config`、`generate`、`write_dataset`、`legacy_scores`、`legacy_models.json`）は廃止されました。市場のルールは[継続市場のシミュレーション](MARKET.md)、出力列は[出力データ仕様](DATA_FORMAT.md)を参照してください。
 
-CLIのJSONとPythonの `Config.from_dict(mapping)` は同じ項目を受け取ります。省略した項目には既定値が入り、未知のキーはエラーになります。`Config(...)` で直接作る場合は `Delay` などのデータクラスを渡します。三要素の設定はすべて応募、書類通過、決定の順です。
+## CLIのJSON設定
+
+CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取ります。省略した項目には既定値が入り、未知のキーはエラーになります。廃止された `rows`、`legacy_scores`、`legacy_models`、`retain`、`referral_start`、`referral_end`、`as_of` を指定するとエラーになります。
 
 | 設定 | 用途と既定値 |
 | --- | --- |
-| `rows`, `seed` | 出力する紹介件数は1,000,000件。生成用の乱数seedは42。 |
-| `referral_start`, `referral_end`, `as_of` | 紹介日時の範囲と観測締切。UTCオフセット付きISO 8601で指定し、開始 ≤ 終了 ≤ 締切にする。 |
-| `application_delay`, `screening_delay`, `decision_delay` | 各遷移の所要日数。既定の `(mean_days, std_days)` は順に `(3, 2)`、`(5, 4)`、`(30, 20)`。 |
-| `base_probabilities`, `probability_half_widths` | 前段到達者の平均目標 `(0.01, 0.10, 0.07)`、ペアごとの上下幅 `(0.005, 0.05, 0.035)`。下限と上限はともに0と1の間。 |
-| `reference_rows`, `reference_seed` | 平均目標を合わせるための参照集団。既定は50,000件と90210。件数は100以上。 |
-| `skill_effects`, `mechanism` | スキル適合、給与、リモート希望とのずれ、隠れた相性、競合、決定時のギャップを設定する。[確率モデル](PROBABILITY_MODEL.md)・[Mechanismの全項目](../src/synthetic_funnel/mechanism.py) |
-| `population` | 固定求人件数 `job_count`（既定1,000）と、スキル、給与、リモート希望・可否、競合件数の分布を設定する。[Populationの全項目](../src/synthetic_funnel/population.py) |
-| `legacy_scores` | 元モデルスコアの学習有無と学習履歴の規模を設定する。 |
+| `market_start` | 市場開始日時。UTCオフセット付きISO 8601で指定する（必須）。 |
+| `seed` | 乱数seed。71。 |
+| `seeker_arrivals`, `job_arrivals` | 1日あたりの求職者・求人の流入数。それぞれ50。 |
+| `days` | 生成日数。1,825日。 |
+| `warmup` | 市場内ウォームアップ学習に使う日数。365日。 |
+| `application_days`, `posting_days` | 求職者の応募可能日数20日、求人の掲載日数40日。 |
+| `referrals` | 1人1日あたりの紹介上限。0〜5件、既定5件。 |
+| `training_window_days`, `training_referrals_per_day`, `negative_reservoir_size` | warmup 学習の期間・密度・負例プール。`[1, 30, 365]`、10,000、100,000。 |
 
-日数の設定は切断前の正規分布の母数です。成功した遷移の所要日数だけ独立に抽選し、負値を引いた場合は引き直します。`std_days: 0` は固定日数です。小数日は日時に反映されます。
-
-### 元モデルスコア
-
-`legacy_scores.enabled` の既定値は `true` です。標準化とロジスティック回帰を使い、各段階で用意した正例と負例を1対1にして学習します。学習履歴は生成する紹介の前に結果が成熟するように用意し、ラベルは紹介から共通3暦月以内の到達で定義します。出力スコアは、この抽出分布における正例の推定確率で、`predict_proba` の正例側に相当します。
-
-| 設定 | 既定値と変更方法 |
-| --- | --- |
-| `training_rows` | 共通の学習履歴は1,000,000件。 |
-| `training_window_days` | 既定は `null` で共通履歴を使う。`[1, 30, 365]` なら、紹介日、応募日、通過日をそれぞれ起点とする期間を指定できる。 |
-| `training_referrals_per_day` | 段階別の学習期間を使うときの1日あたりの生成件数。既定は10,000。 |
-| `negative_reservoir_size` | 段階別の学習期間を使うときに保持する負例候補の上限。既定は100,000。全正例を保持するため、正例数以上の値が必要。 |
-| `seed` | 元モデル学習用のseed。既定は1931。 |
-
-学習には各段階で正例が2件以上あり、負例が正例数以上必要です。不足する場合は `training_rows` を増やします。段階別の学習期間を使う場合は、該当段階の期間または日あたり件数を増やします。少量のデータでファイルや結合を確認するときは `"legacy_scores": {"enabled": false}` を使えます。
+流入数はCLIの `--seeker-arrivals` / `--job-arrivals` でも上書きできます。`--run-dir` と `--output --config` のどちらでも使えます。
 
 ## 公開Python API
 
 | API | 入力と返り値 |
 | --- | --- |
-| `Config`, `Delay`, `Population`, `Mechanism`, `LegacyScores` | 生成や学習の条件を設定するデータクラス。 |
-| `generate(config)` | 1紹介ずつ `(eventsの辞書, truthの辞書)` を返すイテレーター。未観測の日時は空文字。`legacy_scores.enabled=False` の場合、辞書にスコアキーは入らない。 |
-| `write_dataset(config, output, progress=None, *, output_format="sqlite")` | 新しいディレクトリにデータとmanifestを保存し、manifestの辞書を返す。進捗コールバックは10万件ごとと最終件で総件数を受け取る。 |
+| `MarketConfig` | 市場の設定データクラス。`seed`、`seeker_arrivals`、`job_arrivals`、`days`、`warmup`、`application_days`、`posting_days`、`referrals`、warmup学習の設定。 |
+| `write_market_dataset(config, output, *, market_start, output_format="sqlite", progress=None)` | 市場をシミュレーションし、warmup学習で全紹介をスコア付けして、新しいディレクトリに5テーブルと `manifest.json` を保存する。manifestの辞書を返す。 |
+| `simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_index=None, branch_seed=None, daily_stats=None)` | `synthetic_funnel.market` の関数。紹介行と求職者・求人の属性配列を返す。出力せずに検証するときに使う。 |
+| `extract(rows, horizon, stage, period, as_of, mode, ...)` | `synthetic_funnel.market` の関数。成熟した段階のリスク集合を抽出する。 |
+| `train_warmup_models(rows, seekers, jobs, config, start)` / `score_warmup_referrals(...)` | `synthetic_funnel.market_training` の関数。warmup紹介だけを使う学習と推論。 |
 | `pair_features(seeker_skill, required_skill, desired_salary, offered_salary, wants_remote, allows_remote)` | スキル0〜1、正の給与、リモート希望・可否0または1を受け取り、ペアの特徴辞書を返す。 |
-| `transition_probabilities(config, features, seeker_affinity=0.0, employer_affinity=0.0)` | 段階ごとの `(求職者側確率, 企業側確率)` を返す。両者の積がその段階の条件付き確率。各行の真値を再現するには、シミュレーションで使った相性と競合件数も渡す。 |
-| `population_rates(config)` | `expected_rates`（参照集団の条件付き平均）、`intercepts`、`reference_rows`、`reference_seed` を持つ結果を返す。 |
+| `transition_probabilities(config, features, seeker_affinity=0.0, employer_affinity=0.0)` | 段階ごとの `(求職者側確率, 企業側確率)` を返す。両者の積がその段階の条件付き確率。 |
+| `population_rates(config)` | `expected_rates`（参照集団の条件付き平均）、`intercepts`、`reference_rows`、`reference_seed` を持つ `RateAnchor` を返す。 |
+
+確率設定を直接試すときは、`synthetic_funnel.shared` の `ProbabilityConfig` を `transition_probabilities` や `population_rates` に渡せます。既定値は `base_probabilities=(0.01, 0.10, 0.07)`、`probability_half_widths=(0.005, 0.05, 0.035)`、`skill_effects=(2.0, 1.5, 1.0)` です。市場のスコア学習と確率計算はこの共通設定を共有し、市場シミュレーションの乱数系列には影響しません。
 
 以下を `synthetic_funnel/` で実行します。
 
 ```powershell
 @'
-from itertools import islice
+from synthetic_funnel import MarketConfig, write_market_dataset
 
-from synthetic_funnel import Config, LegacyScores, generate
-
-config = Config(rows=12, seed=42, reference_rows=1000,
-                legacy_scores=LegacyScores(enabled=False))
-for event, truth in islice(generate(config), 2):
-    p = truth["p_application_eventual"]
-    print(event["event_id"], f"{p:.4%}")
+manifest = write_market_dataset(
+    MarketConfig(days=120, warmup=60, seeker_arrivals=8, job_arrivals=8),
+    "runs/python_market/output",
+    market_start="2025-01-01T00:00:00+09:00",
+)
+print(manifest["row_counts"], manifest["training"]["status"])
 '@ | uv run --locked python -
 ```
 

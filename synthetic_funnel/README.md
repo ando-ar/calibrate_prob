@@ -24,5 +24,5 @@ uv run --locked --group docs sphinx-build -b html -W docs dist/docs
 `synthetic_funnel/` で `uv sync --locked` を実行すると依存ライブラリを準備できます。同じディレクトリで以下を実行してテストします。
 
 ```powershell
-uv run --locked python -m unittest discover -s test -v
+uv run --locked pytest -q
 ```
