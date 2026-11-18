@@ -9,8 +9,8 @@ from pathlib import Path
 
 SAMPLE_ROWS = 5
 PREPARE_HELP = (
-    '「fixtureを再生成する」で合成DBと候補CSVを生成し、内容を再確認してください。'
-    'CLIでは calibration_pipeline/ で '
+    'DBが無い場合は、GitHub Actionsの calibration-pipeline-fixture artifact（保持期間14日）を '
+    'examples/sqlite/ に展開するか、CLIでは calibration_pipeline/ で '
     'uv run --locked python examples/sqlite/prepare_example.py を実行します。'
     '生成には同じリポジトリの synthetic_funnel/ が必要です。'
 )

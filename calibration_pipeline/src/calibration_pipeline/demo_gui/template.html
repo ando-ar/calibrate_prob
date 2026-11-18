@@ -51,7 +51,7 @@
   <h2>まず何を試す？</h2>
   <p>元スコアは順位づけには使えても、その数値が応募率とは限りません。このデモは合成の紹介履歴から「紹介後3暦月以内に応募する確率」を学び、新しい候補8件の元スコアを確率へ変換します。実在の求職者・求人データではありません。</p>
   <ol>
-    <li>準備：DBが無ければ下の「fixtureを再生成する」で合成データを作成します。</li>
+    <li>準備：DBが無ければ fixture のartifact取得またはCLI生成を行います。下の内容確認の案内を参照してください。</li>
     <li>内容確認：下のテーブル名を開き、構造・件数・データ例を確認します。</li>
     <li>学習：experiment名（例：sqlite_oubo_demo）を入力し、初回は既定のconfig・SQLで実行します。</li>
     <li>推論：推論タブで同じexperiment名を入力し、最新の成功runと既定の候補CSVで実行します。</li>
@@ -118,16 +118,6 @@
   <p>検証のECEは予測確率と実績率のずれ、Brier scoreは確率と0/1の結果の二乗誤差の平均で、いずれも小さいほど良好です。プロットは横軸が平均予測確率、縦軸が実績率で、対角線に近いほど整合します。ビンごとの件数も確認してください。合成データでの結果は実データでの性能を保証しません。</p>
   <p>保存先は experiments/demo_gui/&lt;model&gt;/train または inference/&lt;run_id&gt;/output/ です。学習は calibration_model.pkl・calibration_metrics.json・calibration_plot.svg、推論は calibrated_score.csv（Parquet入力なら同形式）を保存します。各runの input/ に入力コピー、run_metadata.json に実行状態・入力ハッシュ・推論が使った学習runを記録します。</p>
 </section>
-<section class="card">
-  <h2>デモデータの再生成</h2>
-  <p>fixture DBや候補CSVが無い場合・作り直したい場合に、examples/sqlite/prepare_example.py を実行して <code>examples/sqlite/</code> のデータを再生成します。既存のfixture DB・候補CSV・manifestは置き換わります。生成後は上の内容確認に戻ってください。CLIでは calibration_pipeline/ で <code>uv run --locked python examples/sqlite/prepare_example.py</code> を実行できます。同じリポジトリの synthetic_funnel/ が必要です。</p>
-  <form method="post" action="/">
-    <input type="hidden" name="action" value="prepare">
-    <button type="submit">fixtureを再生成する</button>
-  </form>
-  ${prepare_result}
-</section>
-
 <script>${sync_script}</script>
 </body>
 </html>

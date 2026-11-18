@@ -432,18 +432,6 @@ class FixtureInspectionTest(DemoGuiTest):
         self.assertIn("empty_table (table) — 0 件", body)
         self.assertIn("<td>NULL</td>", body)
 
-    def test_prepare_refreshes_inspection(self):
-        script = self.base / "examples" / "sqlite" / "prepare_example.py"
-        script.write_text("# stub", encoding="utf-8")
-        def prepare(command: Sequence[str]) -> CommandResult:
-            with closing(sqlite3.connect(self.fixture)) as connection, connection:
-                connection.execute("CREATE TABLE generated (id INTEGER)")
-            return CommandResult(list(command), 0, "", "")
-        self.restart(RecordingRunner(function=prepare))
-        _, body = self.post({"action": "prepare"})
-        self.assertIn("generated (table) — 0 件", body)
-        self.assertIn("学習へ進んでください", body)
-
     def test_documentation_route_stays_inside_docs(self):
         docs = self.base / "docs" / "html"
         docs.mkdir(parents=True)

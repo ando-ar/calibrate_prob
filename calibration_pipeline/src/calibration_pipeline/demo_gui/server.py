@@ -6,7 +6,6 @@ import html
 import json
 import mimetypes
 import shutil
-import sys
 import uuid
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -311,19 +310,6 @@ def run_inference(state: DemoState, form: dict[str, str]) -> StepResult:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def run_prepare(state: DemoState) -> StepResult:
-    """Regenerate the SQLite example fixture with prepare_example.py."""
-    script = state.examples / "prepare_example.py"
-    if not script.is_file():
-        message = f"fixture生成スクリプトが見つかりません: {script}"
-        return StepResult("デモデータ再生成", "（実行せずに中断）", CommandResult([], 2, "", message))
-    result = state.runner([sys.executable, str(script)])
-    note = ""
-    if result.returncode == 0:
-        note = "<p>examples/sqlite/ のfixtureと候補CSVを再生成しました。上の「固定fixture DBの内容確認」で生成したデータを確認し、学習へ進んでください。</p>"
-    return StepResult("デモデータ再生成", f"{sys.executable} {script}", result, note)
-
-
 def build_handler(state: DemoState, template: Template) -> type[BaseHTTPRequestHandler]:
     """Build a request handler class bound to the demo state."""
 
@@ -366,13 +352,10 @@ def build_handler(state: DemoState, template: Template) -> type[BaseHTTPRequestH
             elif action == "inference":
                 step = run_inference(state, form)
                 page = render_page(state, template, tab="inference", values=values, inference_step=step)
-            elif action == "prepare":
-                step = run_prepare(state)
-                page = render_page(state, template, tab="train", values=values, prepare_step=step)
             else:
                 message = f"未知のアクション: {action}"
                 page = render_page(state, template, tab="train", values=values, banner=message)
-            self.respond(page, 200 if action in ("train", "inference", "prepare") else 400)
+            self.respond(page, 200 if action in ("train", "inference") else 400)
 
         def respond(self, page: str, status: int) -> None:
             payload = page.encode("utf-8")
@@ -460,7 +443,6 @@ def render_page(
     values: dict[str, str],
     train_step: StepResult | None = None,
     inference_step: StepResult | None = None,
-    prepare_step: StepResult | None = None,
     banner: str = "",
 ) -> str:
     """Render the full demo page for the active tab."""
@@ -480,7 +462,6 @@ def render_page(
         train_result=render_step(train_step) if train_step else "",
         inference_form=inference_html,
         inference_result=render_step(inference_step) if inference_step else "",
-        prepare_result=render_step(prepare_step) if prepare_step else "",
         sync_script=SYNC_SCRIPT,
     )
 
