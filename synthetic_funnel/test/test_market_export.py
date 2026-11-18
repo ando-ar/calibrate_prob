@@ -7,9 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import numpy as np
 import pyarrow.parquet as pq
 
-from synthetic_funnel import MarketConfig, write_market_dataset
+from synthetic_funnel import MarketConfig, OCCUPATIONS, REGIONS, write_market_dataset
+from synthetic_funnel.market import simulate
 
 MARKET_START = "2024-01-01T00:00:00+09:00"
 
@@ -46,6 +48,13 @@ class MarketExportTest(unittest.TestCase):
                              connection.execute("SELECT count(*) FROM item").fetchone()[0])
             self.assertEqual(connection.execute("SELECT count(*) FROM events_latent").fetchone()[0],
                              events[0])
+            for table in ("user", "item"):
+                columns = {row[1]: row[2] for row in connection.execute(f"PRAGMA table_info({table})")}
+                self.assertEqual(columns["occupation"], "TEXT")
+                self.assertEqual(columns["region"], "TEXT")
+                sample = connection.execute(f"SELECT occupation, region FROM {table} LIMIT 50").fetchall()
+                self.assertTrue(all(occupation in OCCUPATIONS and region in REGIONS
+                                    for occupation, region in sample))
             departed = connection.execute(
                 "SELECT count(*) FROM user WHERE departure_dt IS NOT NULL").fetchone()[0]
             self.assertGreater(departed, 0)
@@ -119,6 +128,10 @@ class MarketExportTest(unittest.TestCase):
             csv_rows = list(csv.DictReader(stream))
         self.assertEqual(set(parquet["event_id"].to_pylist()), {row["event_id"] for row in rows})
         self.assertEqual({row["event_id"] for row in csv_rows}, {row["event_id"] for row in rows})
+        for table in ("user", "item"):
+            schema = pq.read_schema(self.root / "parquet" / f"{table}.parquet")
+            self.assertEqual(str(schema.field("occupation").type), "string")
+            self.assertEqual(str(schema.field("region").type), "string")
         users_table = pq.read_table(self.root / "parquet" / "user.parquet")
         self.assertTrue(users_table.schema.field("departure_dt").nullable)
         users = users_table.column("departure_dt").to_pylist()
@@ -126,8 +139,26 @@ class MarketExportTest(unittest.TestCase):
         with (self.root / "csv" / "user.csv").open(encoding="utf-8", newline="") as stream:
             csv_users = list(csv.DictReader(stream))
         self.assertEqual(sum(row["departure_dt"] == "" for row in csv_users), users.count(None))
+        self.assertTrue(all(row["occupation"] in OCCUPATIONS and row["region"] in REGIONS
+                            for row in csv_users))
         self.assertTrue((self.root / "csv" / "user.csv").is_file())
         self.assertTrue((self.root / "parquet" / "item.parquet").is_file())
+
+    def test_daily_funnel_sums_match_exported_dates(self):
+        config = MarketConfig(days=24, seeker_arrivals=6, job_arrivals=6)
+        rows, _, _ = simulate(config)
+        expected_applications = int(np.isfinite(rows["application"]).sum())
+        output = self.root / "counts"
+        write_market_dataset(config, output, market_start=MARKET_START)
+        with closing(sqlite3.connect(output / "dataset.sqlite.db")) as connection:
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self.assertEqual(connection.execute("SELECT sum(referrals) FROM daily").fetchone()[0],
+                             connection.execute("SELECT count(*) FROM events").fetchone()[0])
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM events WHERE oubo_dt IS NOT NULL").fetchone()[0],
+                expected_applications)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM events WHERE oubo_dt IS NOT NULL AND oubo_dt < shoukai_dt").fetchone()[0], 0)
 
     def test_manifest_is_identical_across_formats_except_timing_and_files(self):
         config = MarketConfig(days=20, seeker_arrivals=3, job_arrivals=4, seed=5)

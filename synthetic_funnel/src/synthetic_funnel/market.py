@@ -24,6 +24,10 @@ DTYPE=np.dtype([(k,'i4') for k in ('seeker','job','day')]+[(k,'f8') for k in ('a
                +[('failure_stage','i2'),('failure_reason','i2')])
 INTRODUCTION_OFFSET_DAYS = 0.01
 
+# Categories are drawn once per arriving participant and shared by the filtering rules.
+OCCUPATIONS = ("エンジニア", "営業", "事務", "デザイン", "マーケティング", "介護", "販売", "製造")
+REGIONS = ("東京", "大阪", "名古屋", "福岡", "札幌", "仙台", "広島", "沖縄")
+
 
 # Training draws use their own stream so that neither the market stream
 # (random.Random(seed)) nor the counterfactual stream (SeedSequence([seed, b'latent']))
@@ -60,13 +64,21 @@ class MarketConfig:
             raise ValueError('Training density and reservoir size must be positive integers')
 
 
+NUMERIC_COLUMNS=(0,1,2,5,6)  # arrival, skill, salary, remote flag, hidden affinity (categories are columns 3 and 4)
+
+
+def numeric_profiles(profiles,indices):
+    """Numeric part of the profile table as floats; text categories are not model features."""
+    return np.asarray(profiles[indices][:,NUMERIC_COLUMNS],dtype=float)
+
+
 def features(rows,seekers,jobs):
-    s=seekers[rows['seeker']]
-    j=jobs[rows['job']]
+    s=numeric_profiles(seekers,rows['seeker'])
+    j=numeric_profiles(jobs,rows['job'])
     f={'seeker_skill': s[:,1],'required_skill': j[:,1],'desired_salary': s[:,2],'offered_salary': j[:,2],
-           'wants_remote': s[:,5],'allows_remote': j[:,5],'skill_match': 1-abs(s[:,1]-j[:,1]),
+           'wants_remote': s[:,3],'allows_remote': j[:,3],'skill_match': 1-abs(s[:,1]-j[:,1]),
            'skill_shortfall': np.maximum(j[:,1]-s[:,1],0),'overqualification': np.maximum(s[:,1]-j[:,1],0),
-           'salary_shortfall': np.maximum((s[:,2]-j[:,2])/s[:,2],0),'remote_mismatch': s[:,5]*(1-j[:,5]),
+           'salary_shortfall': np.maximum((s[:,2]-j[:,2])/s[:,2],0),'remote_mismatch': s[:,3]*(1-j[:,3]),
            'other_applications': rows['other_applications'],'competing_candidates': rows['competing_candidates']}
     f['seeker_days_left']=s[:,0]+20-rows['day']
     f['job_days_left']=j[:,0]+40-rows['day']
@@ -130,8 +142,8 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     seekers=[] if resume is None else [list(profile) for profile in resume['seekers']]
     jobs=[] if resume is None else [list(profile) for profile in resume['jobs']]
     # Profile tables avoid converting the entire growing history daily.
-    seeker_table=np.empty((config.days*config.seeker_arrivals,8)) if resume is None else None
-    job_table=np.empty((config.days*config.job_arrivals,8)) if resume is None else None
+    seeker_table=np.empty((config.days*config.seeker_arrivals,8),dtype=object) if resume is None else None
+    job_table=np.empty((config.days*config.job_arrivals,8),dtype=object) if resume is None else None
     live_s={} if resume is None else copy.deepcopy(resume['live_s'])
     live_j={} if resume is None else copy.deepcopy(resume['live_j'])
     chunks=[] if resume is None else [resume['rows'].copy()]
@@ -233,22 +245,22 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             sid=len(seekers);skill=rng.random()
             # arrival, skill, desired salary, occupation, region, remote preference, hidden
             # affinity, departure (NaN while live)
-            seekers.append([day,skill,max(200,300+800*skill+rng.gauss(0,100)),rng.randrange(3),rng.randrange(4),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
+            seekers.append([day,skill,max(200,300+800*skill+rng.gauss(0,100)),rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
             if seeker_table is not None:seeker_table[sid]=seekers[-1]
             live_s[sid]={'until': day+config.application_days,'pending': set(),'seen': set()}
         for _ in range(config.job_arrivals):
             jid=len(jobs);skill=rng.random();salary=max(200,300+800*skill+rng.gauss(0,150))
             # salary minimum is offered minus 100, clipped to 100.
-            jobs.append([day,skill,salary,rng.randrange(3),rng.randrange(4),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
+            jobs.append([day,skill,salary,rng.choice(OCCUPATIONS),rng.choice(REGIONS),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
             if job_table is not None:job_table[jid]=jobs[-1]
             live_j[jid]={'until': day+config.posting_days,'pending': set()}
         process(day+INTRODUCTION_OFFSET_DAYS)
         pools={}
-        for role in range(3):
-            for region in range(4):
-                ids=[jid for jid in live_j if jobs[jid][3]==role and (jobs[jid][4]==region or jobs[jid][5])]
+        for occupation in OCCUPATIONS:
+            for region in REGIONS:
+                ids=[jid for jid in live_j if jobs[jid][3]==occupation and (jobs[jid][4]==region or jobs[jid][5])]
                 ids.sort(key=lambda jid:max(100,jobs[jid][2]-100))
-                pools[role,region]=(ids,np.array([max(100,jobs[jid][2]-100) for jid in ids]))
+                pools[occupation,region]=(ids,np.array([max(100,jobs[jid][2]-100) for jid in ids]))
         selected=[]
         for sid,s in live_s.items():
             if s['until']<=day:continue
@@ -270,10 +282,10 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
         rows=np.array(selected,dtype=DTYPE)
         chunks.append(rows)
         if len(rows):
-            sa=seeker_table[:len(seekers)] if seeker_table is not None else np.asarray(seekers)
-            ja=job_table[:len(jobs)] if job_table is not None else np.asarray(jobs)
+            sa=seeker_table[:len(seekers)] if seeker_table is not None else np.asarray(seekers,dtype=object)
+            ja=job_table[:len(jobs)] if job_table is not None else np.asarray(jobs,dtype=object)
             f=features(rows,sa,ja)
-            gates=probability_arrays(base,f,sa[rows['seeker'],6],ja[rows['job'],6],anchors)
+            gates=probability_arrays(base,f,sa[rows['seeker'],6].astype(float),ja[rows['job'],6].astype(float),anchors)
             rows['pa'],rows['ps'],rows['pd']=gates.prod(axis=-1).T
             rows['p_candidate_application'],rows['p_candidate_screening'],rows['p_candidate_decision']=gates[:,:,0].T
             rows['p_employer_application'],rows['p_employer_screening'],rows['p_employer_decision']=gates[:,:,1].T
@@ -301,7 +313,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     if resume is not None:return chunks[0][focal_index].copy()
     rows=np.concatenate(chunks)
     if retain=='applications':rows=rows[np.isfinite(rows['application'])]
-    return rows, np.asarray(seekers).reshape(-1, 8), np.asarray(jobs).reshape(-1, 8)
+    return rows, np.asarray(seekers,dtype=object).reshape(-1, 8), np.asarray(jobs,dtype=object).reshape(-1, 8)
 
 
 def make_snapshot(day,seekers,jobs,live_s,live_j,chunks,cases,anchors):

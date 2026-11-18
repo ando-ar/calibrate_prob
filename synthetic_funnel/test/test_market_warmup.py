@@ -14,6 +14,12 @@ MARKET_START = "2024-01-01T00:00:00+09:00"
 MODEL_FIELDS = ("model_apply_score", "model_screen_score", "model_decision_score")
 
 
+def assert_profiles_equal(first, second):
+    """Object-dtype profiles hold NaN departures; compare NaNs as equal."""
+    assert first.shape == second.shape
+    np.testing.assert_array_equal(first.astype(str), second.astype(str))
+
+
 def _events(output):
     with closing(sqlite3.connect(output / "dataset.sqlite.db")) as connection:
         connection.row_factory = sqlite3.Row
@@ -31,7 +37,9 @@ class MarketWarmupTest(unittest.TestCase):
         return self.root / name
 
     def test_warmup_learning_scores_and_manifest(self):
-        config = MarketConfig(days=120, warmup=60, seeker_arrivals=8, job_arrivals=8)
+        # Eight occupation/region categories make introductions much sparser; the
+        # larger market is needed for at least two observed decisions in warmup.
+        config = MarketConfig(days=240, warmup=60, seeker_arrivals=20, job_arrivals=20)
         output = self.output("warmup")
         manifest = write_market_dataset(config, output, market_start=MARKET_START)
         self.assertEqual(manifest["mode"], "market")
@@ -94,8 +102,8 @@ class MarketWarmupTest(unittest.TestCase):
         second, other_seekers, other_jobs = simulate(trained)
         for key in first.dtype.names:
             np.testing.assert_array_equal(first[key], second[key])
-        np.testing.assert_array_equal(seekers, other_seekers)
-        np.testing.assert_array_equal(jobs, other_jobs)
+        assert_profiles_equal(seekers, other_seekers)
+        assert_profiles_equal(jobs, other_jobs)
 
 
 if __name__ == "__main__":

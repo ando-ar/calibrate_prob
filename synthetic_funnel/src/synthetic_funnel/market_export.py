@@ -72,7 +72,7 @@ def _profile_records(table, profiles, start, make_id):
     for index, (arrival, skill, salary, occupation, region, remote, affinity, departure) in enumerate(profiles):
         yield dict(zip(table.fields, (
             make_id(index), _datetime_at(start, float(arrival)), float(skill), float(salary),
-            int(occupation), int(region), int(remote), float(affinity),
+            str(occupation), str(region), int(remote), float(affinity),
             None if not math.isfinite(departure) else _datetime_at(start, float(departure)),
         ), strict=True))
 

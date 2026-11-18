@@ -4,13 +4,19 @@ from unittest.mock import patch
 
 import numpy as np
 
-from synthetic_funnel.market import LATENT_DATE_FIELDS, MarketConfig, simulate
+from synthetic_funnel.market import LATENT_DATE_FIELDS, OCCUPATIONS, REGIONS, MarketConfig, simulate
 
 
 def tiled_gates(gates):
     def evaluate(config,f,*args):
         return np.tile(np.asarray(gates),(len(f['skill_match']),1,1))
     return evaluate
+
+
+def assert_profiles_equal(test_case,first,second):
+    """Object-dtype profiles hold NaN departures; compare NaNs as equal."""
+    test_case.assertEqual(first.shape,second.shape)
+    np.testing.assert_array_equal(first.astype(str),second.astype(str))
 
 
 class MarketLatentTest(unittest.TestCase):
@@ -67,7 +73,7 @@ class MarketTest(unittest.TestCase):
         expected=all_rows[np.isfinite(all_rows['application'])]
         for key in expected.dtype.names:
             np.testing.assert_array_equal(expected[key],retained[key])
-        np.testing.assert_array_equal(s,ss);np.testing.assert_array_equal(j,jj)
+        assert_profiles_equal(self,s,ss);assert_profiles_equal(self,j,jj)
         complete_snapshot = cast(dict[str, Any], snaps_all[80])
         compact_snapshot = cast(dict[str, Any], snaps_compact[80])
         for key in complete_snapshot['rows'].dtype.names:
@@ -93,6 +99,12 @@ class MarketTest(unittest.TestCase):
 
         with patch('synthetic_funnel.market.probability_arrays',side_effect=high_rates):
             r,s,j=simulate(MarketConfig(days=130,seeker_arrivals=5,job_arrivals=10))
+        self.assertEqual(len(OCCUPATIONS),8)
+        self.assertEqual(len(REGIONS),8)
+        self.assertTrue(set(s[:,3])<=set(OCCUPATIONS))
+        self.assertTrue(set(j[:,3])<=set(OCCUPATIONS))
+        self.assertTrue(set(s[:,4])<=set(REGIONS))
+        self.assertTrue(set(j[:,4])<=set(REGIONS))
         self.assertTrue(np.all(s[r['seeker'],3]==j[r['job'],3]))
         self.assertTrue(np.all(s[r['seeker'],2]>np.maximum(100,j[r['job'],2]-100)))
         self.assertTrue(np.all((s[r['seeker'],4]==j[r['job'],4])|(j[r['job'],5]==1)))
@@ -145,6 +157,27 @@ class MarketTest(unittest.TestCase):
                     active=r[(r['seeker']==sid)&np.isfinite(r['screening'])&~np.isfinite(r['decision'])]
                     self.assertGreater(len(active),0)
             else:self.assertGreaterEqual(departure,s[sid,0]+20)
+
+    def test_competition_counters_follow_market_density(self):
+        def high_rates(config,f,*args):
+            return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
+
+        # Eight occupation and eight region categories make the referral pool far
+        # stricter than the old 3x4 one; 2/2 and 8/8 over 60 days still yield a
+        # few hundred and a few thousand introductions respectively.
+        with patch('synthetic_funnel.market.probability_arrays',side_effect=high_rates):
+            sparse,_,_=simulate(MarketConfig(days=60,seeker_arrivals=2,job_arrivals=2))
+            dense,_,_=simulate(MarketConfig(days=60,seeker_arrivals=8,job_arrivals=8))
+            repeat,_,_=simulate(MarketConfig(days=60,seeker_arrivals=2,job_arrivals=2))
+        self.assertGreater(len(sparse),0)
+        self.assertGreater(len(dense),len(sparse))
+        for rows in (sparse,dense):
+            self.assertTrue(np.all(rows['other_applications']>=0))
+            self.assertTrue(np.all(rows['competing_candidates']>=0))
+        self.assertGreater(float(np.mean(dense['other_applications'])),float(np.mean(sparse['other_applications'])))
+        self.assertGreater(float(np.mean(dense['competing_candidates'])),float(np.mean(sparse['competing_candidates'])))
+        for key in sparse.dtype.names:
+            np.testing.assert_array_equal(sparse[key],repeat[key])
 
 
 if __name__=='__main__':unittest.main()

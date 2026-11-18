@@ -41,8 +41,8 @@ JOIN item AS i USING (item_id)
 | `arrival_dt` | TEXT | なし | 市場への参加日時。 | `2025-01-05T00:00:00+09:00` |
 | `user_skill` | REAL | なし | スキル。0〜1。 | `0.62` |
 | `desired_salary` | REAL | なし | 希望給与。正の実数。 | `860.0` |
-| `occupation` | INTEGER | なし | 職種。 | `1` |
-| `region` | INTEGER | なし | 勤務地。 | `2` |
+| `occupation` | TEXT | なし | 職種。8種類の日本語の値のいずれか（下記）。 | `エンジニア` |
+| `region` | TEXT | なし | 勤務地。8種類の日本語の値のいずれか（下記）。 | `東京` |
 | `wants_remote` | INTEGER | なし | リモート希望。1=希望、0=不希望。 | `1` |
 | `user_affinity` | REAL | なし | 隠れた相性（潜在値）。観測データに現れない。 | `0.31` |
 | `departure_dt` | TEXT | NULL=観測締切時点で在籍中 | 退出日時。退出理由は保存しない。 | NULL |
@@ -55,11 +55,13 @@ JOIN item AS i USING (item_id)
 | `arrival_dt` | TEXT | なし | 市場への参加（掲載開始）日時。 | `2025-01-06T00:00:00+09:00` |
 | `required_skill` | REAL | なし | 要求スキル。0〜1。 | `0.55` |
 | `offered_salary` | REAL | なし | 提示給与。正の実数。 | `900.0` |
-| `occupation` | INTEGER | なし | 職種。 | `1` |
-| `region` | INTEGER | なし | 勤務地。 | `2` |
+| `occupation` | TEXT | なし | 職種。8種類の日本語の値のいずれか（下記）。 | `エンジニア` |
+| `region` | TEXT | なし | 勤務地。8種類の日本語の値のいずれか（下記）。 | `東京` |
 | `allows_remote` | INTEGER | なし | リモート可否。1=可、0=不可。 | `0` |
 | `item_affinity` | REAL | なし | 隠れた相性（潜在値）。観測データに現れない。 | `-0.12` |
 | `departure_dt` | TEXT | NULL=観測締切時点で掲載中 | 退出（掲載終了）日時。退出理由は保存しない。 | `2025-02-15T00:00:00+09:00` |
+
+`occupation` と `region` は8種類の日本語の `TEXT` 値です。`occupation` は `エンジニア` / `営業` / `事務` / `デザイン` / `マーケティング` / `介護` / `販売` / `製造`、`region` は `東京` / `大阪` / `名古屋` / `福岡` / `札幌` / `仙台` / `広島` / `沖縄` です。紹介では職種が一致し、地域が一致するか求人が全国リモート可（`allows_remote = 1`）のペアを選びます。SQLiteでは `TEXT`、Parquetでは string、CSVでは日本語の文字列として保存されます。
 
 ## `events` 紹介と観測された結果
 
