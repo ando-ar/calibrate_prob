@@ -24,7 +24,7 @@ uv run --locked python -m calibration_pipeline.demo_gui
 
 ブラウザが開きます（既定は `http://127.0.0.1:8000/`）。最初に固定fixture DBの内容確認が表示され、その下に学習・推論のタブがあります。
 
-1. **準備**：初回は「fixtureを再生成する」でDBと候補CSVを作ります。同じリポジトリの `../synthetic_funnel/` が必要です。代わりにGitHub Actionsの `calibration-pipeline-fixture` artifact（保持期間14日）を `examples/sqlite/` に展開して同じ内容を用意することもできます（[取得方法](../examples/sqlite/README.md)）。再生成は既存のfixture DB・候補CSV・manifestを置き換えます。
+1. **準備**：初回は「fixtureを再生成する」でDBと候補CSVを作ります。同じリポジトリの `../synthetic_funnel/` が必要です。代わりにGitHub Actionsの `calibration-pipeline-fixture` artifact（保持期間14日）を `examples/sqlite/` に展開して同じ内容を用意することもできます（[取得方法](https://github.com/ando-ar/calibrate_prob/blob/main/calibration_pipeline/examples/sqlite/README.md)）。再生成は既存のfixture DB・候補CSV・manifestを置き換えます。
 2. **内容確認**：使用DBの絶対パスと、各テーブル・ビューの列名・宣言型・件数・最大5行のサンプルを確認します。ビューなどの型は未宣言の場合があります。件数はSQLで学習対象を絞る前の件数です。
 3. **学習**：experiment名に `sqlite_oubo_demo` などを入力し、初回は事前入力されたconfig・SQLで「学習を実行する」を押します。
 4. **推論**：推論タブで同じexperiment名を入力します。既定の候補CSVと最新の成功runで「推論を実行する」を押します。
@@ -75,7 +75,7 @@ GUIの保存先は `experiments/demo_gui/<model>/train/<run_id>/output/` と `ex
 
 ## SQLiteでCLIから学習と推論を試す
 
-demo GUIと同じ流れをコマンドで実行します。fixture生成には、同じリポジトリの `../synthetic_funnel/` が必要です。fixture一式は[SQLiteの実行例](../examples/sqlite/README.md)に従ってActionsのartifactから取得することもできます（保持期間14日）。
+demo GUIと同じ流れをコマンドで実行します。fixture生成には、同じリポジトリの `../synthetic_funnel/` が必要です。fixture一式は[SQLiteの実行例](https://github.com/ando-ar/calibrate_prob/blob/main/calibration_pipeline/examples/sqlite/README.md)に従ってActionsのartifactから取得することもできます（保持期間14日）。
 
 ```powershell
 uv sync --locked
