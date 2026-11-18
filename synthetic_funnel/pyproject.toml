@@ -14,6 +14,7 @@ synthetic-funnel = "synthetic_funnel.__main__:main"
 
 [dependency-groups]
 docs = ["myst-parser>=4,<6", "sphinx>=8.2,<10", "sphinx-rtd-theme>=3.1,<4"]
+dev = ["pytest>=8,<10"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/synthetic_funnel"]
