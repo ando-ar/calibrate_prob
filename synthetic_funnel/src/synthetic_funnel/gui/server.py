@@ -458,8 +458,8 @@ def counts_table(counts: dict) -> str:
 def market_counts_table(manifest: dict) -> str:
     """Render the row counts recorded in a market manifest."""
     row_counts = manifest.get("row_counts") or {}
-    labels = {"events": "紹介（events）", "truth": "truth", "seekers": "求職者（seekers）",
-              "jobs": "求人（jobs）", "daily": "市場日（daily）"}
+    labels = {"events": "紹介（events）", "events_latent": "events_latent", "user": "求職者（user）",
+              "item": "求人（item）", "daily": "市場日（daily）"}
     rows = [(label, f"{row_counts[key]:,}") for key, label in labels.items() if key in row_counts]
     return html_table(("テーブル", "件数"), rows)
 
