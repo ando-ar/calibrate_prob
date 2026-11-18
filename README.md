@@ -10,7 +10,7 @@
 
 Pythonの依存関係は各パッケージのディレクトリで `uv sync --locked` により準備します。実行方法と検証手順は各READMEを参照してください。
 
-校正パイプラインのドキュメントは、clone後に `calibration_pipeline/docs/html/index.html` をブラウザーで開くだけで読めます。生成済みHTMLを同梱しているため、閲覧にPython環境やWebサーバーは不要です。
+校正パイプラインのドキュメントは、[GitHub ActionsのDocumentation](https://github.com/ando-ar/calibrate_prob/actions/workflows/docs.yml) の成功した実行から `calibration-pipeline-docs` artifact（保持期間14日）をダウンロードし、ZIPをすべて展開して `index.html` をブラウザーで開くと読めます。取得後の閲覧にPython環境やWebサーバーは不要です。生成HTMLはGit管理せず、ローカルでも生成できます。詳しくは[ドキュメント開発手順](calibration_pipeline/docs/development.md)を参照してください。
 
 ## 最初に試すデモ
 

@@ -9,7 +9,7 @@ uv sync --locked --group docs
 uv run --locked --group docs python dev/build_docs.py
 ```
 
-`docs/html/index.html` をブラウザーで開いて確認します。HTMLとCSS・JavaScriptもGitに保存するため、cloneした人はビルドせずに読めます。
+`docs/html/index.html` をブラウザーで開いて確認します。出力先の `docs/html/` はGitの追跡対象外で、再生成してもGitの差分には出ません。
 ビルドスクリプトはAPIページを生成し直し、警告なしで成功した場合だけ `docs/html/` を置き換えます。
 `-W` は警告を失敗として扱い、APIのimport失敗や壊れた内部参照を検出します。
 依存関係は `uv.lock` で固定し、実際のパッケージをimportしてAPIを生成します。
@@ -27,15 +27,24 @@ uv run --locked --group docs sphinx-autobuild -E -a -W --keep-going --watch src 
 
 GitHub Actionsの `Documentation` はpush・pull request・手動実行でビルドします。
 ソースや設定だけの変更でも実行するため、APIの変更も追従します。
-成功したHTMLは `calibration-pipeline-docs` artifactから取得できます（保存期間14日）。
-mainへのpush・mainでの手動実行では、更新されたHTMLをbotがmainへコミットします。PRではビルドのみ行います。
-Webサイトには公開しません。mainへのbotのpushがブランチ保護で禁止されている場合は、ローカルで再生成した `docs/html/` をPRに含めてください。
+すべての実行でSphinxの警告をエラーとして検証し、成功したHTML一式を `calibration-pipeline-docs` artifactに保存します（保持期間14日）。
+ワークフローのリポジトリ権限は `contents: read` で、生成物のコミット・pushは行いません。Webサイトには公開しません。
+
+### Actionsから取得して閲覧する
+
+1. GitHubにログインし、リポジトリの [Actions → Documentation](https://github.com/ando-ar/calibrate_prob/actions/workflows/docs.yml) を開きます。
+2. 閲覧したいブランチ・コミットの成功した実行を選びます。mainの内容を読む場合はmainの実行を選びます。
+3. 実行の概要にある **Artifacts** から `calibration-pipeline-docs` をダウンロードします。
+4. ZIPをフォルダーへすべて展開し、その直下の `index.html` をブラウザーで開きます。`_static/` なども含め、展開したファイルの配置を保ってください。HTMLだけを取り出すとスタイルやリンクが機能しません。
+
+取得後はPython環境やWebサーバーなしでオフライン閲覧できます。artifactの保持期間は14日です。期限切れの場合は、実行権限があれば **Run workflow** で対象ブランチを指定して再生成するか、上記のローカルビルドを利用してください。
+デモGUI内の利用ガイドへのリンクを使う場合は、ローカルビルドするか、artifactの中身を `calibration_pipeline/docs/html/` に展開してください。
 
 ## 更新する場所
 
 - 利用方法は `docs/*.md`、APIの説明はソースのdocstringを編集します。
 - 引数・型注釈は実装から取得します。説明のない引数や振る舞いを自動推測する仕組みではありません。
-- `docs/html/` は閲覧用の生成物としてGitに含めます。手で編集せず再生成してください。`docs/_generated/` と `docs/_build/` はGitには含めません。
+- `docs/html/`、`docs/_generated/`、`docs/_build/` は生成物としてGit管理から除外します。手で編集せず再生成し、PRには原稿・docstring・設定の変更を含めてください。
 - SQL・設定例は `literalinclude` で実ファイルを掲載します。
 - 公開モジュールの追加は自動検出されます。削除・改名時は `python dev/build_docs.py` で古いAPIページも除去できます。プレビュー用の `docs/_build/` は必要に応じて削除してください。
 

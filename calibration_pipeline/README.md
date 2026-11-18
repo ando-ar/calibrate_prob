@@ -4,8 +4,8 @@
 
 ## Sphinxドキュメント
 
-clone後は **`calibration_pipeline/docs/html/index.html` をブラウザーで開く**と、日本語の利用ガイド・APIリファレンスを読めます。Pythonの準備やWebサーバーは不要です。
-HTMLもGitに保存しています。再生成する場合は `calibration_pipeline/` で以下を実行します。
+[GitHub ActionsのDocumentation](https://github.com/ando-ar/calibrate_prob/actions/workflows/docs.yml) の成功した実行から `calibration-pipeline-docs` artifact（保持期間14日）をダウンロードし、ZIPをすべて展開して **`index.html` をブラウザーで開く**と、日本語の利用ガイド・APIリファレンスを読めます。取得後はオフラインで閲覧でき、Pythonの準備やWebサーバーは不要です。
+生成HTMLはGit管理しません。ローカルで生成する場合は `calibration_pipeline/` で以下を実行し、`docs/html/index.html` を開きます。
 
 ```powershell
 uv sync --locked --group docs
