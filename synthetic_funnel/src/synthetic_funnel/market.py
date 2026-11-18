@@ -14,22 +14,39 @@ DTYPE=np.dtype([(k,'i4') for k in ('seeker','job','day')]+[(k,'f8') for k in ('a
 INTRODUCTION_OFFSET_DAYS = 0.01
 
 
+# Training draws use their own stream so that neither the market stream
+# (random.Random(seed)) nor the counterfactual stream (SeedSequence([seed, b'latent']))
+# advances because of model fitting.
+TRAINING_STREAM = 0x747261696E  # b'train'
+
+
 @dataclass(frozen=True)
 class MarketConfig:
     seed:int=71
     seeker_arrivals:int=50
     job_arrivals:int=50
     days:int=1825
+    warmup:int=365
     application_days:int=20
     posting_days:int=40
     referrals:int=5
+    training_window_days:tuple=(1,30,365)
+    training_referrals_per_day:int=10000
+    negative_reservoir_size:int=100000
 
     def __post_init__(self):
         for key in ('seeker_arrivals','job_arrivals'):
             if type(getattr(self,key)) is not int or getattr(self,key)<0:raise ValueError('Arrivals must be nonnegative integers')
         for key in ('days','application_days','posting_days'):
             if type(getattr(self,key)) is not int or getattr(self,key)<1:raise ValueError('Durations must be positive integers')
+        if type(self.warmup) is not int or self.warmup<0:raise ValueError('warmup must be a nonnegative integer')
         if type(self.referrals) is not int or not 0<=self.referrals<=5:raise ValueError('Daily referrals must be between 0 and 5')
+        if (not isinstance(self.training_window_days,(tuple,list)) or len(self.training_window_days)!=3
+                or any(type(v) is not int or v<1 for v in self.training_window_days)):
+            raise ValueError('training_window_days requires three positive integers')
+        object.__setattr__(self,'training_window_days',tuple(self.training_window_days))
+        if type(self.training_referrals_per_day) is not int or self.training_referrals_per_day<1 or type(self.negative_reservoir_size) is not int or self.negative_reservoir_size<1:
+            raise ValueError('Training density and reservoir size must be positive integers')
 
 
 def features(rows,seekers,jobs):

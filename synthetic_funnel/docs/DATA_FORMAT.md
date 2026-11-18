@@ -8,7 +8,7 @@
 | `--format parquet` | `events.parquet`、`truth.parquet` | Pythonで列単位に読み込み、分析する。 |
 | `--format csv` | `events.csv`、`truth.csv` | 数行を目視で確認したり、テキストとして受け渡したりする。 |
 
-どの形式でも `manifest.json` が付きます。元モデルスコアを有効にすると `legacy_models.json` に各段階の学習条件と係数も保存されます。
+どの形式でも `manifest.json` が付きます。`legacy_models` を渡さない市場では、warmup期間の紹介履歴で学習したモデルのスコアが `model_*_score` に記録され、manifestの `training` に学習条件が入ります。既存モデルを渡した場合は `legacy_*_score` と manifestの `legacy_models` になります。
 
 ## `events` 紹介時点の特徴と観測結果
 
@@ -21,10 +21,13 @@
 | `wants_remote`, `allows_remote` | リモート希望・可否を示す0/1。 |
 | `skill_match`, `skill_shortfall`, `overqualification`, `salary_shortfall`, `remote_mismatch` | 上記の属性から計算した適合度、スキル不足・過剰、給与不足、リモート条件の不一致。 |
 | `other_applications`, `competing_candidates` | 紹介時点の他社応募件数、同じ求人で選考中の他候補者数。 |
-| `legacy_apply_score`, `legacy_screen_score`, `legacy_decision_score` | 各段階の元モデルスコア。学習を無効にした場合、出力ファイル・テーブルではこの3列の値が欠損になる。 |
+| `legacy_apply_score`, `legacy_screen_score`, `legacy_decision_score` | 各段階の元モデルスコア。`legacy_models` を指定しなかった市場では欠損になる。 |
+| `model_apply_score`, `model_screen_score`, `model_decision_score` | warmup学習モデルの各段階スコア。`legacy_models` を渡した市場、およびwarmup中の紹介では欠損になる。 |
 | `shoukai_dt`, `oubo_dt`, `shorui_tsuuka_dt`, `kettei_dt` | 紹介、応募、通過、決定の日時。 |
 
 日時はUTCオフセット付きISO 8601の文字列です。未到達や `as_of` より後の日時はSQLiteとParquetで `NULL`、CSVで空欄です。3暦月以内の結果を評価する場合は、紹介からの期限と観測締切を比較してラベルが成熟した行を選び、到達日時を期限と比較します。通過の分母は期限内の応募者、決定の分母は期限内の通過者です。
+
+warmup学習を使う市場では、市場開始から `warmup` 日未満の紹介の `model_*_score` は `NULL` で、それ以降の紹介には学習済みモデルのスコアが入ります。`warmup` が `days` 以上なら全行が `NULL` です。学習には紹介時点の観測特徴量と観測結果だけを使い、潜在値や市場確率は使いません。
 
 ## `truth` 評価用の真値と潜在結果
 
@@ -44,7 +47,7 @@
 
 ## 実行条件と集計
 
-`manifest.json` に全設定とseed、パッケージとPythonのバージョン、出力形式、データファイルのSHA-256が入ります。同じ条件を再現するときは、設定・seedと使用したコード・依存環境を揃えます。生成規則や乱数の割り当てが変わると、同じseedから生成される行も変わることがあります。
+`manifest.json` に全設定とseed、パッケージとPythonのバージョン、出力形式、データファイルのSHA-256が入ります。市場では `warmup_end` と `training_cutoff`、および `training`（`method`、`warmup`、`training_window_days` などの学習パラメータ）または `legacy_models`（SHA-256と学習締切）も入ります。同じ条件を再現するときは、設定・seedと使用したコード・依存環境を揃えます。生成規則や乱数の割り当てが変わると、同じseedから生成される行も変わることがあります。
 
 - `rate_anchor.expected_rates` は基礎確率を合わせるために使った参照集団での期待率です。
 - `generated_expected_rates` は出力したペアの潜在確率を前段到達確率で重み付けした期待率です。

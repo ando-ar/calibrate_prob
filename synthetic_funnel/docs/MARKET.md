@@ -9,11 +9,36 @@
 - 決定すると双方が退出し、関連する選考が終了します。求職者は応募期間後に進行中の選考が終わると退出します。求人は掲載期限でも退出します。
 - 行に保存される `pa`、`ps`、`pd` は紹介時点の基礎移行確率です。紹介時点の他社応募件数と他候補者数を含めて計算します。その後に起きる退出や掲載期限の影響は、シミュレーションした到達結果に反映されます。
 
-`MarketConfig` では `seed`、1日あたりの流入数 `seeker_arrivals` と `job_arrivals`、生成日数 `days`、応募可能日数 `application_days`、掲載日数 `posting_days`、紹介上限 `referrals` を設定します。既定の流入はそれぞれ50件/日、生成日数は1,825日です。
+`MarketConfig` では次の項目を設定します。
+
+| 設定 | 用途と既定値 |
+| --- | --- |
+| `seed` | 乱数seed。71。 |
+| `seeker_arrivals`, `job_arrivals` | 1日あたりの求職者・求人の流入数。それぞれ50件。 |
+| `days` | 生成日数。1,825日。 |
+| `warmup` | 市場内ウォームアップ学習に使う期間の日数。365日。 |
+| `application_days` | 求職者の応募可能日数。20日。 |
+| `posting_days` | 求人の掲載日数。40日。 |
+| `referrals` | 1日あたりの1人当たり紹介上限。0〜5件。既定5件。 |
+| `training_window_days` | 応募・通過・決定の各段階で学習に使う期間（日）。`[1, 30, 365]`。 |
+| `training_referrals_per_day` | 学習時に1日から使う紹介の上限。10,000件。 |
+| `negative_reservoir_size` | 負例候補として保持する件数の上限。100,000件。 |
+
+## 市場内ウォームアップ学習
+
+モデルを渡さない場合は、市場自身の紹介履歴からスコアを学習します。
+
+1. 市場開始から `warmup` 日までの紹介を蓄積します（学習にも観測結果を使い、潜在値や市場確率は使いません）。
+2. `warmup` 日時点で、3暦月のラベルと `training_window_days`、1対1の負例抽出、負例リザーバを使って応募・通過・決定の3つの balanced logistic regression モデルを学習します。
+3. `warmup` 日以降に紹介された行にのみモデルを適用し、`model_apply_score`、`model_screen_score`、`model_decision_score` を記録します。
+
+warmup中の紹介の `model_*_score` はNULLです。`warmup` が `days` 以上のときは、すべての行のスコアがNULLになります。manifestの `training` に `method`、`warmup`、`warmup_end`、`training_cutoff`（学習に使ったwarmup紹介の導入時刻）と学習パラメータが入ります。学習は市場・反実仮の乱数系列とは独立した系列を使うため、同じseedの市場そのものは変わりません。
+
+既存の `legacy_models.json` を渡す従来の2段構成もそのまま使えます。この場合は `legacy_*_score` を記録し、manifestには `legacy_models`（SHA-256と学習締切）を記録します。学習締切 `training_cutoff` が市場開始日時 `market_start` 以前のファイルを指定してください。
 
 ## CLIからデータセットを保存する
 
-`synthetic_funnel/` で実行します。継続市場のスコアには、通常の紹介履歴の出力にある `legacy_models.json` を使います。`legacy_scores.enabled` を `true` にすると、応募・通過・決定の3モデルがこのJSONに保存されます。学習締切 `training_cutoff` が市場開始日時 `market_start` 以前のファイルを指定してください。
+`synthetic_funnel/` で実行します。`legacy_models` を指定しなければ上記の市場内ウォームアップ学習が使われます。
 
 既存のモデルがない場合は、次の例で動作確認用のモデルを作れます。少量の学習データでも決定ラベルを得られるよう、この例の紹介履歴では基準率を高めています。
 
@@ -31,7 +56,7 @@ New-Item -ItemType Directory -Force runs/market_model/input, runs/market_demo/in
 uv run --locked synthetic-funnel --run-dir runs/market_model --format sqlite
 ```
 
-市場の設定を `runs/market_demo/input/config.json` に置き、`--market` を指定します。モデルへの相対パスは、この設定ファイルがあるディレクトリを基準にします。
+市場の設定を `runs/market_demo/input/config.json` に置き、`--market` を指定します。下の例は既存モデルを使う場合です。`legacy_models` を省くと市場内ウォームアップ学習になり、モデルへの相対パスは、この設定ファイルがあるディレクトリを基準にします。
 
 ```powershell
 @'
@@ -46,17 +71,17 @@ uv run --locked synthetic-funnel --run-dir runs/market_model --format sqlite
 uv run --locked synthetic-funnel --market --run-dir runs/market_demo --format sqlite
 ```
 
-SQLite では `runs/market_demo/output/dataset.sqlite.db` に下の5テーブルが入ります。`--format parquet` と `--format csv` ではテーブルごとにファイルを保存します。再実行するときは別の実行ディレクトリを使います。`manifest.json` でデータ件数、観測終了日時、モデルのハッシュと学習締切を確認できます。
+SQLite では `runs/market_demo/output/dataset.sqlite.db` に下の5テーブルが入ります。`--format parquet` と `--format csv` ではテーブルごとにファイルを保存します。再実行するときは別の実行ディレクトリを使います。`manifest.json` でデータ件数、観測終了日時、`training`（または `legacy_models`）と `training_cutoff`、`warmup_end` を確認できます。
 
 | テーブル | 1行の単位とキー | 主な内容 |
 | --- | --- | --- |
-| `events` | 紹介ごと。`event_id` | 求職者と求人のID、紹介時点の特徴量、3つの `legacy_*_score`、紹介および観測された到達日時。 |
+| `events` | 紹介ごと。`event_id` | 求職者と求人のID、紹介時点の特徴量、3つのスコア（`legacy_*_score` または warmup学習の `model_*_score`）、紹介および観測された到達日時。 |
 | `truth` | 紹介ごと。`event_id` で `events` と1対1 | 市場からの退出や掲載終了を適用する前の各段階の条件付き確率 `p_*_eventual`、相性、応募・通過確率の差。片側確率、潜在到達日時、失敗理由などの記録のない真値は欠損。 |
 | `seekers` | 求職者ごと。`user_id` | 参加日時、スキル、希望給与、職種、地域、リモート希望、隠れた相性。 |
 | `jobs` | 求人ごと。`item_id` | 参加日時、要求スキル、提示給与、職種、地域、リモート可否、隠れた相性。 |
 | `daily` | 市場の日ごと。`day_dt` | 日末の在籍求職者数 `live_seekers` と求人数 `live_jobs`、当日の紹介数 `referrals`。 |
 
-日時は `market_start` に経過日数を足し、UTCオフセット付きのISO 8601で保存します。観測終了までに到達が記録されなかった段階は `NULL`（CSVでは空欄）です。`p_*_eventual` は紹介時点で計算される確率で、その後の市場の打ち切りによって、実績の到達率は下がり得ます。`legacy_*_score` は指定したモデルを紹介時点の特徴量で推論した値です。市場の確率や観測結果はスコア入力に使いません。
+日時は `market_start` に経過日数を足し、UTCオフセット付きのISO 8601で保存します。観測終了までに到達が記録されなかった段階は `NULL`（CSVでは空欄）です。`p_*_eventual` は紹介時点で計算される確率で、その後の市場の打ち切りによって、実績の到達率は下がり得ます。`legacy_*_score` は指定したモデル、`model_*_score` は warmup学習モデルを紹介時点の特徴量で推論した値です。warmup中の紹介の `model_*_score` は `NULL` です。市場の確率や観測結果はスコア入力に使いません。
 
 Pythonで保存する場合も同じデータセットを生成できます。
 
@@ -72,6 +97,7 @@ write_market_dataset(
 )
 ```
 
+`legacy_models` を外すと市場内ウォームアップ学習が使われ、`days` を `warmup` より長く設定してください（例: `days=500, warmup=365`）。
 ## 紹介を一様に抽出する
 
 以下を `synthetic_funnel/` で実行します。紹介後30日以内の応募が評価できる最初の30日間の紹介から、5件を重複なく抽出します。
