@@ -8,7 +8,7 @@
   "finished_at": "2026-11-18T11:26:44+00:00",
   "author": "issue-39-density worker",
   "hypothesis": "Decision scarcity is intrinsic to the domain, so observed-fee replay evaluation becomes usable only when arrivals, evaluation-window length and seed count together yield enough observed decisions; measure the density instead of raising probabilities.",
-  "conclusion": "Realized decision density is stable at ~2.1e-5 per introduction (~1.0e-4 counterfactual). A 30-day window at 20/20 gives 0.6-1.0 expected decisions per seed and is degenerate even with 20 seeds; 50/50 x 30 days x 20 seeds gives ~50 expected decisions (usable); 100/100 x 30 days x 5-20 seeds gives ~28-113 (robust). No probability changes are proposed; see docs/MARKET_DENSITY.md.",
+  "conclusion": "Realized decision density is stable at ~1.2-2.1e-5 per introduction (~1.1e-4 counterfactual). A 30-day window at 20/20 gives 0.6-1.0 expected decisions per seed and is degenerate even with 20 seeds; 50/50 x 30 days x 20 seeds gives ~50 (usable); 100/100 gives ~28-113 (robust); follow-up 150/150 gives ~103-120 and 200/200 ~180-193 per 20 seeds (single seed ~5-10). At 150-200/200 the 5/day cap is ~97-99% saturated while effective pool exhaustion falls to 1.7-2.3%, so the cap (not the pool) binds; daily referrals still grow near-linearly. 200/200 needs 3.36M events / 1.78 GiB per 180-day seed, so 50/50 remains the production 20-seed default. No probability changes are proposed; see docs/MARKET_DENSITY.md.",
   "data_version": {
     "manifest_sha256": "not_committed_generated_in_temp",
     "generator_version": "0.12.0"
@@ -22,6 +22,8 @@
     {"label": "base_20_180", "days": 180, "warmup": 90, "seeker_arrivals": 20, "job_arrivals": 20, "seed": 71, "generation_seconds": 15.94},
     {"label": "arr_50_180", "days": 180, "warmup": 90, "seeker_arrivals": 50, "job_arrivals": 50, "seed": 71, "generation_seconds": 61.69},
     {"label": "arr_100_180", "days": 180, "warmup": 90, "seeker_arrivals": 100, "job_arrivals": 100, "seed": 71, "generation_seconds": 111.43},
+    {"label": "arr_150_180", "days": 180, "warmup": 90, "seeker_arrivals": 150, "job_arrivals": 150, "seed": 71, "generation_seconds": 141.13},
+    {"label": "arr_200_180", "days": 180, "warmup": 90, "seeker_arrivals": 200, "job_arrivals": 200, "seed": 71, "generation_seconds": 180.41},
     {"label": "proof_20_730", "days": 730, "warmup": 365, "seeker_arrivals": 20, "job_arrivals": 20, "seed": 71, "generation_seconds": 63.53}
   ],
   "config": {
@@ -40,23 +42,26 @@
     "definition_cap_utilization": "distinct (day, user_id) with exactly 5 introductions / all distinct (day, user_id) introduced",
     "definition_zero_referral_share": "1 - distinct introduced users that day / daily.live_users",
     "definition_pool": "occupation equal AND (region equal OR allows_remote) AND max(100, offered_salary-100) <= desired_salary; effective pool also excludes seen pairs",
-    "decision_density_realized_per_introduction": 2.1e-05,
-    "decision_density_counterfactual_per_introduction": 1.0e-04
+    "decision_density_realized_per_introduction": "1.2e-05 to 2.1e-05 (small-sample variation)",
+    "decision_density_counterfactual_per_introduction": 1.1e-04
   },
   "results": {
-    "live_users_steady": {"20_20": 409, "50_50": 1010, "100_100": 2040},
-    "live_items_steady": {"20_20": 778, "50_50": 1782, "100_100": 3565},
-    "referrals_per_day": {"20_20": 838, "50_50": 3856, "100_100": 8881},
-    "zero_referral_share_post_warmup": {"20_20": 0.341, "50_50": 0.136, "100_100": 0.099},
-    "decisions_total": {"base_20_180": 5, "arr_50_180": 15, "arr_100_180": 34, "proof_20_730": 14},
-    "zero_decision_day_share": {"base_20_180": 0.972, "arr_50_180": 0.917, "arr_100_180": 0.828, "proof_20_730": 0.981},
-    "cap_utilization": {"20_20": 0.481, "50_50": 0.823, "100_100": 0.936},
-    "raw_pool_mean_steady": {"20_20": 38.6, "50_50": 93.0, "100_100": 187.9},
-    "effective_pool_zero_share_steady": {"20_20": 0.665, "50_50": 0.212, "100_100": 0.065},
-    "expected_decisions_30d_x_20seeds": {"20_20": 16.7, "50_50": 50.0, "100_100": 113.3, "proof_20_730": 11.5},
-    "usable_combination": "50/50 arrivals, 30-day window, >=20 seeds (expected ~50 observed decisions); 100/100 works with 5-20 seeds; 20/20 needs a ~120-180 day window or ~50 seeds"
+    "live_users_steady": {"20_20": 409, "50_50": 1010, "100_100": 2040, "150_150": 3068, "200_200": 4090},
+    "live_items_steady": {"20_20": 778, "50_50": 1782, "100_100": 3565, "150_150": 5348, "200_200": 7130},
+    "referrals_per_day": {"20_20": 838, "50_50": 3856, "100_100": 8881, "150_150": 13846, "200_200": 18647},
+    "zero_referral_share_post_warmup": {"20_20": 0.341, "50_50": 0.136, "100_100": 0.099, "150_150": 0.085, "200_200": 0.082},
+    "decisions_total": {"base_20_180": 5, "arr_50_180": 15, "arr_100_180": 34, "arr_150_180": 31, "arr_200_180": 58, "proof_20_730": 14},
+    "zero_decision_day_share": {"base_20_180": 0.972, "arr_50_180": 0.917, "arr_100_180": 0.828, "arr_150_180": 0.856, "arr_200_180": 0.733, "proof_20_730": 0.981},
+    "cap_utilization": {"20_20": 0.481, "50_50": 0.823, "100_100": 0.936, "150_150": 0.972, "200_200": 0.982},
+    "raw_pool_mean_steady": {"20_20": 38.6, "50_50": 93.0, "100_100": 187.9, "150_150": 281.8, "200_200": 374.2},
+    "effective_pool_zero_share_steady": {"20_20": 0.665, "50_50": 0.212, "100_100": 0.065, "150_150": 0.023, "200_200": 0.017},
+    "expected_decisions_30d_x_20seeds": {"20_20": 16.7, "50_50": 50.0, "100_100": 113.3, "150_150": 103.3, "200_200": 193.3, "proof_20_730": 11.5},
+    "dataset_size_200_200": {"events_180d_1seed": 3356449, "db_gib_180d_1seed": 1.777, "events_30d_window_1seed_estimate": 560000, "db_gib_20seeds_180d_estimate": 35.6},
+    "bottleneck_verdict": "At 150-200/200 the 5/day cap is 97-99% saturated (effectively binding), but daily referrals still grow near-linearly; pool tightness recedes (effective zero-share 6.5% -> 2.3% -> 1.7%), so the pool is not the bottleneck.",
+    "usable_combination": "50/50 arrivals, 30-day window, >=20 seeds (expected ~50 decisions) remains the production default; 100/100 works with 5-20 seeds (~28-113); 150/150 gives ~103-120 and 200/200 ~180-193 per 20 seeds (single seed ~5-10) but 200/200 needs ~1.78 GiB per 180-day seed; 20/20 needs a ~120-180 day window or ~50 seeds"
   },
-  "tests": {"command": "uv run pytest -q (from synthetic_funnel)", "result": "96 passed"},
+  "tests": {"command": "uv run pytest -q (from synthetic_funnel)", "result": "100 passed"},
+  "follow_up": {"date": "2026-11-18", "scope": "read-only analysis + report updates; no src/ or test/ changes", "configs_added": ["arr_150_180", "arr_200_180"], "data_policy": "generated under %TEMP%/opencode/market_density_ext and deleted; no sqlite/manifest committed"},
   "data_policy": "Datasets generated under a temp directory and deleted; no sqlite/manifest/parquet committed. Only docs/ and experiments/ files changed.",
   "input_sha256": {},
   "submission_sha256": null,

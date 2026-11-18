@@ -404,6 +404,276 @@
       }
     },
     {
+      "name": "arr_150_180",
+      "config": {
+        "name": "arr_150_180",
+        "days": 180,
+        "warmup": 90,
+        "seeker_arrivals": 150,
+        "job_arrivals": 150,
+        "seed": 71
+      },
+      "generation_seconds": 141.13,
+      "training_status": "trained",
+      "row_counts": {
+        "events": 2492294,
+        "events_latent": 2492294,
+        "user": 27000,
+        "user_latent": 27000,
+        "item": 27000,
+        "item_latent": 27000,
+        "daily": 180
+      },
+      "db_size_bytes": 1413935104,
+      "db_size_gb": 1.317,
+      "new_arrivals_per_day": {
+        "user": [
+          150
+        ],
+        "item": [
+          150
+        ]
+      },
+      "live": {
+        "mean_users": 3067.7,
+        "mean_items": 5348.0,
+        "snapshot": {
+          "start": {
+            "day": 0,
+            "live_users": 150,
+            "live_items": 150
+          },
+          "middle": {
+            "day": 90,
+            "live_users": 3233,
+            "live_items": 5999
+          },
+          "end": {
+            "day": 179,
+            "live_users": 3268,
+            "live_items": 5999
+          }
+        }
+      },
+      "referrals": {
+        "mean_per_day": 13846.1,
+        "start_middle_end": [
+          633,
+          14749,
+          14666
+        ],
+        "introduced_users_per_day_mean": 2815.8,
+        "zero_referral_share": {
+          "overall": 0.0779,
+          "post_warmup": 0.0846,
+          "at_start": 0.0,
+          "at_middle": 0.0776,
+          "at_end": 0.09
+        }
+      },
+      "funnel": {
+        "applications_per_day": 120.01,
+        "screenings_per_day": 12.39,
+        "decisions_per_day": 0.1722,
+        "decisions_total": 31,
+        "zero_decision_day_share_overall": 0.8556,
+        "zero_decision_day_share_post_warmup": 0.8556,
+        "kettei_day_min_max_median": [
+          15,
+          178,
+          100
+        ]
+      },
+      "cap_utilization": {
+        "share": 0.9721,
+        "post_warmup_share": 0.9812,
+        "distribution": {
+          "1": 5688,
+          "2": 4028,
+          "3": 2670,
+          "4": 1735,
+          "5": 492720
+        }
+      },
+      "pool_tightness_raw": {
+        "start": {
+          "mean": 7.4,
+          "zero_share": 0.0,
+          "can_hit_cap_share": 0.7267
+        },
+        "middle": {
+          "mean": 281.8,
+          "zero_share": 0.0,
+          "can_hit_cap_share": 1.0
+        },
+        "end": {
+          "mean": 282.1,
+          "zero_share": 0.0,
+          "can_hit_cap_share": 1.0
+        }
+      },
+      "pool_tightness_effective": {
+        "middle": {
+          "mean": 233.2,
+          "zero_share": 0.023
+        },
+        "end": {
+          "mean": 233.1,
+          "zero_share": 0.028
+        }
+      },
+      "decision_density": {
+        "realized_per_introduction": 1.243833993902806e-05,
+        "counterfactual_prob_per_introduction": 0.00010871,
+        "counterfactual_expected_last30d": 48.51
+      },
+      "expected_decisions": {
+        "rate_source": "observed post-warmup decisions/day",
+        "decisions_per_day_post_warmup": 0.2,
+        "decisions_per_day_overall": 0.172,
+        "expected_30d_1seed_post_warmup": 6.0,
+        "expected_30d_20seeds_post_warmup": 120.0,
+        "expected_30d_1seed_overall": 5.167,
+        "expected_30d_20seeds_overall": 103.333,
+        "latent_expected_decisions_last30d_induced_pool": 34039.375
+      }
+    },
+    {
+      "name": "arr_200_180",
+      "config": {
+        "name": "arr_200_180",
+        "days": 180,
+        "warmup": 90,
+        "seeker_arrivals": 200,
+        "job_arrivals": 200,
+        "seed": 71
+      },
+      "generation_seconds": 180.41,
+      "training_status": "trained",
+      "row_counts": {
+        "events": 3356449,
+        "events_latent": 3356449,
+        "user": 36000,
+        "user_latent": 36000,
+        "item": 36000,
+        "item_latent": 36000,
+        "daily": 180
+      },
+      "db_size_bytes": 1908436992,
+      "db_size_gb": 1.777,
+      "new_arrivals_per_day": {
+        "user": [
+          200
+        ],
+        "item": [
+          200
+        ]
+      },
+      "live": {
+        "mean_users": 4090.2,
+        "mean_items": 7130.2,
+        "snapshot": {
+          "start": {
+            "day": 0,
+            "live_users": 200,
+            "live_items": 200
+          },
+          "middle": {
+            "day": 90,
+            "live_users": 4346,
+            "live_items": 7996
+          },
+          "end": {
+            "day": 179,
+            "live_users": 4342,
+            "live_items": 7998
+          }
+        }
+      },
+      "referrals": {
+        "mean_per_day": 18646.9,
+        "start_middle_end": [
+          862,
+          19752,
+          19777
+        ],
+        "introduced_users_per_day_mean": 3769.3,
+        "zero_referral_share": {
+          "overall": 0.0745,
+          "post_warmup": 0.0815,
+          "at_start": 0.01,
+          "at_middle": 0.0835,
+          "at_end": 0.0797
+        }
+      },
+      "funnel": {
+        "applications_per_day": 161.38,
+        "screenings_per_day": 16.84,
+        "decisions_per_day": 0.3222,
+        "decisions_total": 58,
+        "zero_decision_day_share_overall": 0.7333,
+        "zero_decision_day_share_post_warmup": 0.7444,
+        "kettei_day_min_max_median": [
+          14,
+          179,
+          85.5
+        ]
+      },
+      "cap_utilization": {
+        "share": 0.9818,
+        "post_warmup_share": 0.9887,
+        "distribution": {
+          "1": 4618,
+          "2": 3638,
+          "3": 2466,
+          "4": 1628,
+          "5": 666129
+        }
+      },
+      "pool_tightness_raw": {
+        "start": {
+          "mean": 8.9,
+          "zero_share": 0.01,
+          "can_hit_cap_share": 0.735
+        },
+        "middle": {
+          "mean": 374.2,
+          "zero_share": 0.0,
+          "can_hit_cap_share": 1.0
+        },
+        "end": {
+          "mean": 371.2,
+          "zero_share": 0.0,
+          "can_hit_cap_share": 1.0
+        }
+      },
+      "pool_tightness_effective": {
+        "middle": {
+          "mean": 325.2,
+          "zero_share": 0.0168
+        },
+        "end": {
+          "mean": 322.2,
+          "zero_share": 0.0165
+        }
+      },
+      "decision_density": {
+        "realized_per_introduction": 1.7280167224349304e-05,
+        "counterfactual_prob_per_introduction": 0.00011033,
+        "counterfactual_expected_last30d": 65.33
+      },
+      "expected_decisions": {
+        "rate_source": "observed post-warmup decisions/day",
+        "decisions_per_day_post_warmup": 0.3,
+        "decisions_per_day_overall": 0.322,
+        "expected_30d_1seed_post_warmup": 9.0,
+        "expected_30d_20seeds_post_warmup": 180.0,
+        "expected_30d_1seed_overall": 9.667,
+        "expected_30d_20seeds_overall": 193.333,
+        "latent_expected_decisions_last30d_induced_pool": 45904.801
+      }
+    },
+    {
       "name": "proof_20_730",
       "config": {
         "name": "proof_20_730",
@@ -536,5 +806,6 @@
         "latent_expected_decisions_last30d_induced_pool": 2096.088
       }
     }
-  ]
+  ],
+  "follow_up": "2026-11-18: added arr_150_180 and arr_200_180 (days=180, warmup=90, seed=71); no code changes; uv run pytest -q = 100 passed"
 }
