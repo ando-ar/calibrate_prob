@@ -52,24 +52,30 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     Retention changes storage, never introductions, random draws or outcomes.
     Fully expired daily chunks are compacted only after all their cases close.
 
-    If provided, daily_stats receives (day, active seekers, active jobs, introductions).
+    If provided, daily_stats receives (day, live users, live items, introductions, new users,
+    new items, applications, screenings, decisions) for each simulated day.
     """
     if retain not in ('all','applications'):
         raise ValueError('retain must be all or applications')
     if resume is not None and retain!='all':
         raise ValueError('Future branches require retain=all')
     rng=random.Random(config.seed if branch_seed is None else branch_seed)
-    seekers=[] if resume is None else copy.deepcopy(resume['seekers'])
-    jobs=[] if resume is None else copy.deepcopy(resume['jobs'])
-    # Immutable profile tables avoid converting the entire growing history daily.
-    seeker_table=np.empty((config.days*config.seeker_arrivals,7)) if resume is None else None
-    job_table=np.empty((config.days*config.job_arrivals,7)) if resume is None else None
+    # Profiles are mutable 8-column rows: arrival, skill, salary, occupation, region, remote,
+    # hidden affinity and departure (NaN while the actor is still live).
+    seekers=[] if resume is None else [list(profile) for profile in resume['seekers']]
+    jobs=[] if resume is None else [list(profile) for profile in resume['jobs']]
+    # Profile tables avoid converting the entire growing history daily.
+    seeker_table=np.empty((config.days*config.seeker_arrivals,8)) if resume is None else None
+    job_table=np.empty((config.days*config.job_arrivals,8)) if resume is None else None
     live_s={} if resume is None else copy.deepcopy(resume['live_s'])
     live_j={} if resume is None else copy.deepcopy(resume['live_j'])
     chunks=[] if resume is None else [resume['rows'].copy()]
     queue=[]
     cases={}
     next_e=0
+    daily_counts={}
+    def count_transition(stage,t):
+        daily_counts.setdefault(int(t),[0,0,0])[stage]+=1
     base=Config(seed=config.seed, legacy_scores=replace(Config().legacy_scores, enabled=False))
     anchors=population_rates(base).intercepts if resume is None else resume['anchors']
     def delay(mu,sd):
@@ -79,6 +85,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 return v
     def natural(sid,t):
         if sid in live_s and live_s[sid]['until']<=t and not live_s[sid]['pending']:
+            seekers[sid][7]=t
             del live_s[sid]
     def finish(eid,t):
         c=cases.pop(eid,None)
@@ -98,16 +105,21 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             if stage==0:
                 if live_s[sid]['until']<=t:finish(eid,t);continue
                 row['application']=t
+                count_transition(0,t)
                 cases[eid]=(sid,jid,chunk,offset,1)
                 heapq.heappush(queue,(t+delay(5,4),rng.random(),eid,1))
             elif stage==1:
                 if eid!=focal_eid and rng.random()>=row['ps']:finish(eid,t);continue
                 row['screening']=t
+                count_transition(1,t)
                 cases[eid]=(sid,jid,chunk,offset,2)
                 heapq.heappush(queue,(t+delay(30,20),rng.random(),eid,2))
             else:
                 if eid!=focal_eid and rng.random()>=row['pd']:finish(eid,t);continue
                 row['decision']=t
+                count_transition(2,t)
+                seekers[sid][7]=t
+                jobs[jid][7]=t
                 s=live_s.pop(sid)
                 j=live_j.pop(jid)
                 for other in s['pending']|j['pending']:finish(other,t)
@@ -144,6 +156,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     for day in range(first_day,config.days):
         for jid in [i for i,v in live_j.items() if v['until']<=day]:
             j=live_j.pop(jid)
+            jobs[jid][7]=day
             for eid in list(j['pending']):finish(eid,day)
         for sid in list(live_s):
             if sid not in live_s:continue
@@ -153,14 +166,15 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 natural(sid,day)
         for _ in range(config.seeker_arrivals):
             sid=len(seekers);skill=rng.random()
-            # birth, skill, desired salary, occupation, region, remote preference, hidden
-            seekers.append((day,skill,max(200,300+800*skill+rng.gauss(0,100)),rng.randrange(3),rng.randrange(4),int(rng.random()<.5),rng.gauss(0,.5)))
+            # arrival, skill, desired salary, occupation, region, remote preference, hidden
+            # affinity, departure (NaN while live)
+            seekers.append([day,skill,max(200,300+800*skill+rng.gauss(0,100)),rng.randrange(3),rng.randrange(4),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
             if seeker_table is not None:seeker_table[sid]=seekers[-1]
             live_s[sid]={'until': day+config.application_days,'pending': set(),'seen': set()}
         for _ in range(config.job_arrivals):
             jid=len(jobs);skill=rng.random();salary=max(200,300+800*skill+rng.gauss(0,150))
             # salary minimum is offered minus 100, clipped to 100.
-            jobs.append((day,skill,salary,rng.randrange(3),rng.randrange(4),int(rng.random()<.5),rng.gauss(0,.5)))
+            jobs.append([day,skill,salary,rng.randrange(3),rng.randrange(4),int(rng.random()<.5),rng.gauss(0,.5),np.nan])
             if job_table is not None:job_table[jid]=jobs[-1]
             live_j[jid]={'until': day+config.posting_days,'pending': set()}
         process(day+INTRODUCTION_OFFSET_DAYS)
@@ -212,12 +226,13 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
                 raise RuntimeError('Cannot compact an active case')
             chunks[old]=chunks[old][np.isfinite(chunks[old]['application'])].copy()
         if daily_stats is not None:
-            daily_stats.append((day, len(live_s), len(live_j), len(rows)))
+            daily_stats.append((day, len(live_s), len(live_j), len(rows), config.seeker_arrivals,
+                                config.job_arrivals, *daily_counts.pop(day, (0, 0, 0))))
         if progress and day%100==0:progress(day,len(rows))
     if resume is not None:return chunks[0][focal_index].copy()
     rows=np.concatenate(chunks)
     if retain=='applications':rows=rows[np.isfinite(rows['application'])]
-    return rows, np.asarray(seekers).reshape(-1, 7), np.asarray(jobs).reshape(-1, 7)
+    return rows, np.asarray(seekers).reshape(-1, 8), np.asarray(jobs).reshape(-1, 8)
 
 
 def make_snapshot(day,seekers,jobs,live_s,live_j,chunks,cases,anchors):
@@ -237,7 +252,7 @@ def make_snapshot(day,seekers,jobs,live_s,live_j,chunks,cases,anchors):
     array['job']=[jmap[int(v)] for v in array['job']]
     ss={smap[sid]:{'until': s['until'],'pending': set(),'seen': {jmap[j] for j in s['seen'] if j in jmap}} for sid,s in live_s.items()}
     jj={jmap[jid]:{'until': j['until'],'pending': set()} for jid,j in live_j.items()}
-    return {'day': day,'seekers': [seekers[i] for i in smap],'jobs': [jobs[i] for i in jmap],'live_s': ss,'live_j': jj,
+    return {'day': day,'seekers': [list(seekers[i]) for i in smap],'jobs': [list(jobs[i]) for i in jmap],'live_s': ss,'live_j': jj,
                 'rows': array,'keys': keys,'anchors': anchors}
 
 

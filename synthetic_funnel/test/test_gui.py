@@ -193,9 +193,10 @@ class RunInspectionTest(GuiTestCase):
 
     def test_market_manifest_summary(self):
         manifest = {"mode": "market", "output_format": "sqlite",
-                    "row_counts": {"events": 12, "truth": 12, "seekers": 8, "jobs": 9, "daily": 90}}
+                    "row_counts": {"events": 12, "events_latent": 12, "user": 8, "item": 9, "daily": 90}}
         table = server.market_counts_table(manifest)
-        self.assertIn("求職者（seekers）", table)
+        self.assertIn("求職者（user）", table)
+        self.assertIn("events_latent", table)
         self.assertIn("12", table)
         self.assertIn("—", server.rate_table(manifest))
 

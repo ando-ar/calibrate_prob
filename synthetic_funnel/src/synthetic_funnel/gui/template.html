@@ -96,7 +96,7 @@
     <table>
       <tr><th>入力</th><td>市場の設定（流入数・日数・紹介上限など）、市場開始日時、既存の <code>legacy_models.json</code> のパス、出力形式</td></tr>
       <tr><th>実行</th><td><code>python -m synthetic_funnel --market --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
-      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>truth</code>（紹介ごとの真の確率）、<code>seekers</code> / <code>jobs</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫）+ <code>manifest.json</code></td></tr>
+      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの真の確率）、<code>user</code> / <code>item</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫とファネル）+ <code>manifest.json</code></td></tr>
     </table>
     <p><code>legacy_models.json</code> は通常の紹介履歴で <code>legacy_scores</code> を有効にして実行した run の <code>output/</code> にあります。モデルの学習締切は市場開始 <code>market_start</code> 以前である必要があります。</p>
     <p>初めて市場データを作る場合は:<ol>

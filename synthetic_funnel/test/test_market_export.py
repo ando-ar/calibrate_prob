@@ -35,33 +35,75 @@ class MarketExportTest(unittest.TestCase):
         cls.model_path = model_run / "legacy_models.json"
 
     def test_three_formats_share_keys_and_keep_unknown_truth_null(self):
-        config = MarketConfig(days=16, seeker_arrivals=3, job_arrivals=4)
+        config = MarketConfig(days=60, seeker_arrivals=3, job_arrivals=4)
+        manifests = {}
         for output_format in ("sqlite", "parquet", "csv"):
-            write_market_dataset(config, self.root / output_format, market_start=MARKET_START,
-                                 legacy_models=self.model_path, output_format=output_format)
+            manifests[output_format] = write_market_dataset(
+                config, self.root / output_format, market_start=MARKET_START,
+                legacy_models=self.model_path, output_format=output_format)
 
         with closing(sqlite3.connect(self.root / "sqlite" / "dataset.sqlite.db")) as connection:
             connection.row_factory = sqlite3.Row
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            events = connection.execute(
+                "SELECT count(*), count(oubo_dt), count(shorui_tsuuka_dt), count(kettei_dt) FROM events"
+            ).fetchone()
+            funnel = connection.execute(
+                "SELECT sum(referrals), sum(applications), sum(screenings), sum(decisions) FROM daily"
+            ).fetchone()
+            self.assertEqual(tuple(funnel), tuple(events))
             self.assertEqual(connection.execute("SELECT count(*) FROM daily").fetchone()[0], config.days)
-            self.assertEqual(connection.execute("SELECT sum(referrals) FROM daily").fetchone()[0],
-                             connection.execute("SELECT count(*) FROM events").fetchone()[0])
+            self.assertEqual(connection.execute("SELECT sum(new_users) FROM daily").fetchone()[0],
+                             connection.execute("SELECT count(*) FROM user").fetchone()[0])
+            self.assertEqual(connection.execute("SELECT sum(new_items) FROM daily").fetchone()[0],
+                             connection.execute("SELECT count(*) FROM item").fetchone()[0])
+            self.assertEqual(connection.execute("SELECT count(*) FROM events_latent").fetchone()[0],
+                             events[0])
+            departed = connection.execute(
+                "SELECT count(*) FROM user WHERE departure_dt IS NOT NULL").fetchone()[0]
+            self.assertGreater(departed, 0)
+            live_users = connection.execute(
+                "SELECT count(*) FROM user WHERE departure_dt IS NULL").fetchone()[0]
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM user WHERE departure_dt IS NOT NULL AND departure_dt <= arrival_dt"
+            ).fetchone()[0], 0)
             rows = connection.execute("SELECT * FROM events ORDER BY shoukai_dt, event_id").fetchall()
-            unknown = connection.execute("SELECT failure_reason, latent_kettei_dt FROM truth").fetchall()
+            unknown = connection.execute(
+                "SELECT failure_reason, latent_kettei_dt FROM events_latent").fetchall()
             self.assertTrue(all(tuple(row) == (None, None) for row in unknown))
-            self.assertTrue(all(0 <= row["legacy_decision_score"] <= 1 for row in rows))
+            self.assertTrue(all(0 <= row["model_decision_score"] <= 1 for row in rows))
+            self.assertFalse(any(
+                name in rows[0].keys() for name in
+                ("seeker_skill", "required_skill", "desired_salary", "offered_salary",
+                 "wants_remote", "allows_remote")))
             self.assertGreater(len(rows), 0)
             first = datetime.fromisoformat(rows[0]["shoukai_dt"])
             self.assertEqual(first.utcoffset(), datetime.fromisoformat(MARKET_START).utcoffset())
             self.assertEqual((first.hour, first.minute, first.second), (0, 14, 24))
+            manifest = manifests["sqlite"]
+            self.assertEqual(set(manifest["row_counts"]), {"events", "events_latent", "user", "item", "daily"})
+            self.assertEqual(manifest["row_counts"]["events"], events[0])
+            self.assertEqual(manifest["row_counts"]["events_latent"], events[0])
+            self.assertEqual(manifest["row_counts"]["user"],
+                             connection.execute("SELECT count(*) FROM user").fetchone()[0])
+            self.assertEqual(manifest["row_counts"]["item"],
+                             connection.execute("SELECT count(*) FROM item").fetchone()[0])
+            self.assertEqual(manifest["row_counts"]["daily"], config.days)
 
         parquet = pq.read_table(self.root / "parquet" / "events.parquet")
         with (self.root / "csv" / "events.csv").open(encoding="utf-8", newline="") as stream:
             csv_rows = list(csv.DictReader(stream))
         self.assertEqual(set(parquet["event_id"].to_pylist()), {row["event_id"] for row in rows})
         self.assertEqual({row["event_id"] for row in csv_rows}, {row["event_id"] for row in rows})
-        self.assertTrue((self.root / "csv" / "seekers.csv").is_file())
-        self.assertTrue((self.root / "parquet" / "jobs.parquet").is_file())
+        users_table = pq.read_table(self.root / "parquet" / "user.parquet")
+        self.assertTrue(users_table.schema.field("departure_dt").nullable)
+        users = users_table.column("departure_dt").to_pylist()
+        self.assertEqual(users.count(None), live_users)
+        with (self.root / "csv" / "user.csv").open(encoding="utf-8", newline="") as stream:
+            csv_users = list(csv.DictReader(stream))
+        self.assertEqual(sum(row["departure_dt"] == "" for row in csv_users), users.count(None))
+        self.assertTrue((self.root / "csv" / "user.csv").is_file())
+        self.assertTrue((self.root / "parquet" / "item.parquet").is_file())
 
     def test_rejects_cutoff_after_market_start_without_publishing_output(self):
         output = self.root / "too-early"
