@@ -2,13 +2,13 @@
 import copy
 import heapq
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import numpy as np
 
-from .generator import Config
 from .mechanism import probability_arrays
 from .rates import population_rates
+from .shared import ProbabilityConfig
 
 LATENT_CANDIDATE_FIELDS=('p_candidate_application','p_candidate_screening','p_candidate_decision')
 LATENT_EMPLOYER_FIELDS=('p_employer_application','p_employer_screening','p_employer_decision')
@@ -141,7 +141,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     daily_counts={}
     def count_transition(stage,t):
         daily_counts.setdefault(int(t),[0,0,0])[stage]+=1
-    base=Config(seed=config.seed, legacy_scores=replace(Config().legacy_scores, enabled=False))
+    base=ProbabilityConfig(seed=config.seed)
     anchors=population_rates(base).intercepts if resume is None else resume['anchors']
     def delay(mu,sd):
         while True:

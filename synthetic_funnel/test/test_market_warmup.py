@@ -7,13 +7,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from synthetic_funnel import (
-    Config,
-    LegacyScores,
-    MarketConfig,
-    write_dataset,
-    write_market_dataset,
-)
+from synthetic_funnel import MarketConfig, write_market_dataset
 from synthetic_funnel.market import simulate
 
 MARKET_START = "2024-01-01T00:00:00+09:00"
@@ -32,13 +26,6 @@ class MarketWarmupTest(unittest.TestCase):
         directory = TemporaryDirectory()
         cls.addClassCleanup(directory.cleanup)
         cls.root = Path(directory.name)
-        model_run = cls.root / "model"
-        write_dataset(
-            Config(rows=2, reference_rows=1000, base_probabilities=(0.35, 0.45, 0.35),
-                   probability_half_widths=(0.1, 0.1, 0.1), legacy_scores=LegacyScores(training_rows=3000)),
-            model_run,
-        )
-        cls.model_path = model_run / "legacy_models.json"
 
     def output(self, name):
         return self.root / name
@@ -53,6 +40,7 @@ class MarketWarmupTest(unittest.TestCase):
         self.assertEqual(manifest["config"]["training_referrals_per_day"], 10000)
         self.assertEqual(manifest["config"]["negative_reservoir_size"], 100000)
         self.assertNotIn("legacy_models", manifest)
+        self.assertNotIn("retention", manifest)
         training = manifest["training"]
         self.assertEqual(training["method"], "balanced_logistic_regression")
         self.assertEqual(training["warmup"], 60)
@@ -61,6 +49,9 @@ class MarketWarmupTest(unittest.TestCase):
         self.assertLessEqual(datetime.fromisoformat(training["training_cutoff"]),
                              datetime.fromisoformat(training["warmup_end"]))
         self.assertEqual(len(training["stages"]), 3)
+        self.assertEqual(manifest["training_cutoff"], training["training_cutoff"])
+        self.assertEqual(manifest["warmup_end"], training["warmup_end"])
+        self.assertGreaterEqual(manifest["generation_seconds"], 0)
 
         warmup_end = training["warmup_end"]
         before = [row for row in _events(output) if row["shoukai_dt"] < warmup_end]
@@ -81,19 +72,6 @@ class MarketWarmupTest(unittest.TestCase):
             self.assertTrue(all(row[field] is None for row in events))
         self.assertEqual(manifest["training"]["status"], "not_trained")
         self.assertEqual(manifest["training"]["training_cutoff"], None)
-
-    def test_legacy_models_path_keeps_legacy_entry(self):
-        config = MarketConfig(days=16, seeker_arrivals=3, job_arrivals=4)
-        output = self.output("legacy")
-        manifest = write_market_dataset(config, output, market_start=MARKET_START,
-                                        legacy_models=self.model_path)
-        self.assertNotIn("training", manifest)
-        self.assertEqual(manifest["legacy_models"]["method"], "balanced_logistic_regression")
-        self.assertIn("sha256", manifest["legacy_models"])
-        self.assertIn("training_cutoff", manifest["legacy_models"])
-        events = _events(output)
-        self.assertTrue(all(isinstance(row["model_decision_score"], float) for row in events))
-        self.assertTrue(all(row["model_apply_score"] is not None for row in events))
 
     def test_same_seed_reproduces_scores_and_row_counts(self):
         config = MarketConfig(days=100, warmup=60, seeker_arrivals=8, job_arrivals=8)

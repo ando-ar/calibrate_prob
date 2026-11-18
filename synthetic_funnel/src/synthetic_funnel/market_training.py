@@ -13,11 +13,9 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from .generator import FEATURE_FIELDS, STAGES
 from .market import INTRODUCTION_OFFSET_DAYS, TRAINING_STREAM, features
-from .trained_scores import deadline, predict_scores
+from .shared import FEATURE_FIELDS, MODEL_SCORE_FIELDS, STAGES, deadline, predict_scores
 
-MODEL_SCORE_FIELDS = ('model_apply_score', 'model_screen_score', 'model_decision_score')
 DATE_FIELDS = ('application', 'screening', 'decision')
 
 
