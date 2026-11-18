@@ -5,7 +5,7 @@
 | パッケージ | 役割 |
 | --- | --- |
 | [calibration_pipeline](calibration_pipeline/README.md) | CatBoostとIsotonic Regressionによる校正、学習・推論の実験管理 |
-| [synthetic_funnel](synthetic_funnel/README.md) | 紹介・応募・書類通過・決定の合成履歴を生成 |
+| [synthetic_funnel](synthetic_funnel/README.md) | 継続市場のシミュレーションによる紹介・応募・書類通過・決定の合成履歴を生成 |
 | [product_prototype](product_prototype/README.md) | データ取得方法、モデル、金額を考慮した推薦順位の比較 |
 
 Pythonの依存関係は各パッケージのディレクトリで `uv sync --locked` により準備します。実行方法と検証手順は各READMEを参照してください。
@@ -16,9 +16,9 @@ Pythonの依存関係は各パッケージのディレクトリで `uv sync --lo
 
 [初回利用ガイド](calibration_pipeline/docs/quickstart.md)では、合成DBの準備 → 内容確認 → 学習 → 推論 → 結果確認をブラウザーで試せます。元スコアは順位づけの値であり、そのまま応募率を意味するとは限りません。デモでは履歴からそのずれを校正し、新しい候補の応募確率を出力します。
 
-`synthetic_funnel` が合成履歴・候補を生成し、`calibration_pipeline` が学習・校正・検証と推論を実行します。`product_prototype` は推薦方法や金額を考慮した順位の比較実験用で、このデモの実行には不要です。GUIでは固定fixture DBの構造とデータ例を実行前に確認できます。
+`synthetic_funnel` が市場をシミュレーションして合成履歴・候補を生成し、`calibration_pipeline` が学習・校正・検証と推論を実行します。`product_prototype` は推薦方法や金額を考慮した順位の比較実験用で、このデモの実行には不要です。GUIでは固定fixture DBの構造とデータ例を実行前に確認できます。
 
-合成データの生成そのものをブラウザーで試すには、`synthetic_funnel/` で `uv run --locked python -m synthetic_funnel.gui` を実行します。条件を入力して合成履歴や市場データを生成し、SQLiteの内容・件数・manifestを確認できます。詳しくは[クイックスタートの「GUIで試す」](synthetic_funnel/docs/QUICKSTART.md)を参照してください。
+合成データの生成そのものをコマンドラインで試すには、`synthetic_funnel/` の[クイックスタート](synthetic_funnel/docs/QUICKSTART.md)に従って `uv run --locked synthetic-funnel --run-dir ...` を実行します。市場のルールやスコアの学習方法は[継続市場のシミュレーション](synthetic_funnel/docs/MARKET.md)を参照してください。
 
 ## Issueベースの開発
 
