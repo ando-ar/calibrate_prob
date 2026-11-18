@@ -21,7 +21,8 @@
   .banner:empty { display: none; }
   .field { display: block; margin: 10px 0; }
   .field span { display: block; font-size: 0.8rem; color: #555; margin-bottom: 2px; }
-  .field span.hint { font-size: 0.75rem; color: #777; }
+  .field span.hint, p.hint { font-size: 0.75rem; color: #777; }
+  .explain p.hint { color: #555; }
   .field input, .field select { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
   .field textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; font: 0.85rem/1.4 Consolas, monospace; white-space: pre; }
   button { background: #2c5aa8; color: #fff; border: none; border-radius: 6px; padding: 10px 28px; font: inherit; font-weight: bold; cursor: pointer; margin-top: 8px; }
@@ -73,8 +74,8 @@
     <h2>市場データ生成で何が起きるか</h2>
     <table>
       <tr><th>入力</th><td>市場の設定（流入数・日数・warmup・紹介上限など）、市場開始日時、出力形式</td></tr>
-      <tr><th>実行</th><td><code>python -m synthetic_funnel --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt;</code></td></tr>
-      <tr><th>出力</th><td>5テーブル: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの反実仮の真値）、<code>user</code> / <code>item</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫とファネル）+ <code>manifest.json</code></td></tr>
+      <tr><th>実行</th><td><code>python -m synthetic_funnel --run-dir runs/gui/&lt;タイムスタンプ&gt; --progress --format &lt;形式&gt; --seeker-arrivals &lt;数&gt; --job-arrivals &lt;数&gt;</code>。流入数はCLIフラグで設定ファイルの値を上書きします。</td></tr>
+      <tr><th>出力</th><td>テーブル（存在するものだけ動的に表示）: <code>events</code>（紹介ごと）、<code>events_latent</code>（紹介ごとの反実仮の真値）、<code>user</code> / <code>item</code>（参加者ごと）、<code>daily</code>（市場の日ごとの在庫とファネル）。環境によって <code>user_latent</code> / <code>item_latent</code> が含まれることもあります。+ <code>manifest.json</code></td></tr>
     </table>
     <p>スコアは外部モデルファイルではなく、市場自身の warmup 紹介から学習します。warmup が生成日数以上のときは、すべてのスコア列がNULLになります。</p>
     <p>詳しいルールはドキュメントの <code>docs/MARKET.md</code> を参照してください。</p>

@@ -24,20 +24,35 @@ STAGE_LABELS = ("応募", "書類通過", "決定")
 TABS = ("market", "results")
 FORM_KEYS = {
     "market": ("seed", "seeker_arrivals", "job_arrivals", "days", "warmup", "application_days",
-               "posting_days", "referrals", "market_start", "format", "advanced_config"),
+               "posting_days", "referrals", "training_window_days", "training_referrals_per_day",
+               "negative_reservoir_size", "market_start", "format", "advanced_config"),
 }
 DEFAULT_VALUES = {
     "market": {
         "seed": "71", "seeker_arrivals": "8", "job_arrivals": "8", "days": "90", "warmup": "365",
         "application_days": "20", "posting_days": "40", "referrals": "5",
+        "training_window_days": "", "training_referrals_per_day": "", "negative_reservoir_size": "",
         "market_start": "2025-01-01T00:00:00+09:00", "format": "sqlite", "advanced_config": "{}",
     },
 }
+# (label, minimum, maximum). None means no bound.
 MARKET_INT_FIELDS = {
-    "seed": ("seed", None), "seeker_arrivals": ("seeker_arrivals", 0), "job_arrivals": ("job_arrivals", 0),
-    "days": ("days", 1), "warmup": ("warmup", 0),
-    "application_days": ("application_days", 1), "posting_days": ("posting_days", 1),
-    "referrals": ("referrals", 0),
+    "seed": ("seed", None, None), "seeker_arrivals": ("seeker_arrivals", 0, None),
+    "job_arrivals": ("job_arrivals", 0, None),
+    "days": ("days", 1, None), "warmup": ("warmup", 0, None),
+    "application_days": ("application_days", 1, None), "posting_days": ("posting_days", 1, None),
+    "referrals": ("referrals", 0, 5),
+}
+# Optional warmup-training fields: blank means "use the MarketConfig default".
+MARKET_OPTIONAL_INT_FIELDS = {
+    "training_referrals_per_day": ("warmup学習の1日あたり紹介数", 1),
+    "negative_reservoir_size": ("負例プールのサイズ", 1),
+}
+TRAINING_WINDOW_HINT = "training_window_days は1以上の整数をカンマ区切りで3つ指定してください"
+MARKET_COUNT_LABELS = {
+    "user": "求職者（user）", "item": "求人（item）", "events": "紹介（events）",
+    "events_latent": "events_latent（反実仮）", "user_latent": "user_latent",
+    "item_latent": "item_latent", "daily": "市場日（daily）",
 }
 ERROR_HINTS = (
     ("isoformat", "日時は ISO 8601 形式で指定してください（例: 2024-01-01T00:00:00+09:00）。"),
@@ -48,6 +63,9 @@ ERROR_HINTS = (
     ("Durations must be positive integers", "日数は1以上の整数で指定してください。"),
     ("warmup must be a nonnegative integer", "warmup は0以上の整数で指定してください。"),
     ("Daily referrals", "referrals は0〜5の整数で指定してください。"),
+    ("training_window_days requires three positive integers", TRAINING_WINDOW_HINT + "。"),
+    ("Training density and reservoir size must be positive integers",
+     "warmup学習の紹介数と負例プールサイズは1以上の整数で指定してください。"),
 )
 
 
@@ -110,10 +128,27 @@ def parse_advanced(form: dict[str, str]) -> tuple[dict | None, str]:
 
 
 def collect_integers(values: dict, errors: list[str], form: dict[str, str], fields: dict) -> None:
-    """Fill integer form fields into values, recording validation errors."""
-    for name, (label, minimum) in fields.items():
+    """Fill required integer form fields into values, recording validation errors."""
+    for name, (label, minimum, maximum) in fields.items():
         value, error = parse_int(label, form.get(name, ""))
         if not error and minimum is not None and value < minimum:
+            error = f"{label}は{minimum}以上の整数で指定してください"
+        if not error and maximum is not None and value > maximum:
+            error = f"{label}は{maximum}以下の整数で指定してください"
+        if error:
+            errors.append(error)
+        else:
+            values[name] = value
+
+
+def collect_optional_integers(values: dict, errors: list[str], form: dict[str, str], fields: dict) -> None:
+    """Fill optional positive-integer fields; blank fields are left out so defaults apply."""
+    for name, (label, minimum) in fields.items():
+        text = (form.get(name, "") or "").strip()
+        if not text:
+            continue
+        value, error = parse_int(label, text)
+        if not error and value < minimum:
             error = f"{label}は{minimum}以上の整数で指定してください"
         if error:
             errors.append(error)
@@ -121,15 +156,52 @@ def collect_integers(values: dict, errors: list[str], form: dict[str, str], fiel
             values[name] = value
 
 
+def collect_training_window(values: dict, errors: list[str], form: dict[str, str]) -> None:
+    """Parse the comma-separated training_window_days field (three positive ints)."""
+    text = (form.get("training_window_days", "") or "").strip()
+    if not text:
+        return
+    parts = [part.strip() for part in text.split(",")]
+    numbers: list[int] = []
+    for part in parts:
+        value, error = parse_int("training_window_days", part)
+        if error or value < 1:
+            errors.append(TRAINING_WINDOW_HINT)
+            return
+        numbers.append(value)
+    if len(numbers) != 3:
+        errors.append(TRAINING_WINDOW_HINT)
+        return
+    values["training_window_days"] = numbers
+
+
+def parse_market_start(form: dict[str, str], errors: list[str]) -> str | None:
+    """Validate that market_start is an ISO 8601 datetime carrying a UTC offset."""
+    text = (form.get("market_start", "") or "").strip()
+    if not text:
+        errors.append("market_start を入力してください")
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        errors.append("market_start は UTC オフセット付きの ISO 8601 日時で指定してください"
+                      "（例: 2025-01-01T00:00:00+09:00）")
+        return None
+    if parsed.utcoffset() is None:
+        errors.append("market_start には UTC オフセット（例: +09:00）を含めてください")
+        return None
+    return text
+
+
 def build_market_values(form: dict[str, str]) -> tuple[dict | None, str]:
     """Turn market-tab form values into a market config JSON object."""
     values: dict = {}
     errors: list[str] = []
     collect_integers(values, errors, form, MARKET_INT_FIELDS)
-    market_start = form.get("market_start", "").strip()
-    if not market_start:
-        errors.append("market_start を入力してください")
-    else:
+    collect_optional_integers(values, errors, form, MARKET_OPTIONAL_INT_FIELDS)
+    collect_training_window(values, errors, form)
+    market_start = parse_market_start(form, errors)
+    if market_start is not None:
         values["market_start"] = market_start
     advanced, error = parse_advanced(form)
     if error:
@@ -182,7 +254,11 @@ def run_generation(state: GuiState, form: dict[str, str]) -> StepResult:
     (run_dir / "input").mkdir(parents=True)
     (run_dir / "input" / "config.json").write_text(
         json.dumps(values, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    argv = ["--run-dir", str(run_dir), "--progress", "--format", fmt]
+    # Arrivals are passed as CLI overrides: they take precedence over whatever
+    # is stored in input/config.json (which still keeps a reproducible copy).
+    argv = ["--run-dir", str(run_dir), "--progress", "--format", fmt,
+            "--seeker-arrivals", str(values["seeker_arrivals"]),
+            "--job-arrivals", str(values["job_arrivals"])]
     command = cli_command(argv)
     result = state.runner(command)
     detail = ""
@@ -376,12 +452,39 @@ def counts_table(counts: dict) -> str:
 
 
 def market_counts_table(manifest: dict) -> str:
-    """Render the row counts recorded in a market manifest."""
+    """Render every row-count entry recorded in a market manifest (no fixed table list)."""
     row_counts = manifest.get("row_counts") or {}
-    labels = {"events": "紹介（events）", "events_latent": "events_latent", "user": "求職者（user）",
-              "item": "求人（item）", "daily": "市場日（daily）"}
-    rows = [(label, f"{row_counts[key]:,}") for key, label in labels.items() if key in row_counts]
+    if not isinstance(row_counts, dict) or not row_counts:
+        return "<p>row_counts がありません。</p>"
+    rows = []
+    for key in sorted(row_counts):
+        count = row_counts[key]
+        label = MARKET_COUNT_LABELS.get(key, key)
+        value = f"{count:,}" if isinstance(count, int) else html.escape(str(count))
+        rows.append((label, value))
     return html_table(("テーブル", "件数"), rows)
+
+
+def manifest_highlights(manifest: dict) -> str:
+    """Render the manifest fields most useful to an operator, kept lightweight."""
+    rows: list[tuple[str, str]] = []
+
+    def add(label: str, value: object) -> None:
+        rows.append((label, "—" if value in (None, "") else html.escape(str(value))))
+
+    add("モード（mode）", manifest.get("mode"))
+    add("市場開始（market_start）", manifest.get("market_start"))
+    add("観測終了（observation_end_exclusive）", manifest.get("observation_end_exclusive"))
+    training = manifest.get("training")
+    if not isinstance(training, dict):
+        training = {}
+    for key, label in (("method", "学習手法（method）"), ("warmup", "warmup"),
+                       ("warmup_end", "warmup_end"), ("training_cutoff", "training_cutoff"),
+                       ("status", "学習ステータス（status）")):
+        add(label, training.get(key))
+    seconds = manifest.get("generation_seconds")
+    add("生成時間（generation_seconds）", f"{seconds:.3f} 秒" if isinstance(seconds, (int, float)) else seconds)
+    return html_table(("項目", "値"), rows)
 
 
 def dataset_content(manifest: dict, output: Path) -> str:
@@ -479,6 +582,9 @@ def render_run_detail(state: GuiState, run_id: str) -> str:
             "失敗の原因は実行結果に表示されたCLIエラーを確認してください。</p>"
         )
     if manifest is not None:
+        sections.append(
+            f'<section class="card"><h3>manifest ハイライト</h3>{manifest_highlights(manifest)}</section>'
+        )
         sections.append('<section class="card"><h3>件数サマリ</h3>')
         counts = funnel_event_counts(output)
         sections.append(counts_table(counts) if counts is not None else "<p>events の件数を読み取れませんでした。</p>")
@@ -539,17 +645,30 @@ def render_market_form(values: dict[str, str]) -> str:
     """Render the market-tab form fields."""
     return (
         field_text("seed", "seed", values["seed"], "71", "number")
-        + field_text("seeker_arrivals", "1日の求職者流入（seeker_arrivals）", values["seeker_arrivals"], "8", "number")
-        + field_text("job_arrivals", "1日の求人流入（job_arrivals）", values["job_arrivals"], "8", "number")
+        + field_text("seeker_arrivals", "1日の求職者流入（seeker_arrivals / --seeker-arrivals）",
+                     values["seeker_arrivals"], "8", "number")
+        + field_text("job_arrivals", "1日の求人流入（job_arrivals / --job-arrivals）",
+                     values["job_arrivals"], "8", "number")
+        + '<p class="hint">流入数はCLIの <code>--seeker-arrivals</code> / <code>--job-arrivals</code> '
+          'で設定ファイルの値を上書きして渡します。</p>'
         + field_text("days", "生成日数（days）", values["days"], "90", "number")
         + field_text("warmup", "ウォームアップ日数（warmup）", values["warmup"], "365", "number")
         + field_text("application_days", "応募可能日数（application_days）", values["application_days"], "20", "number")
         + field_text("posting_days", "掲載日数（posting_days）", values["posting_days"], "40", "number")
-        + field_text("referrals", "1人あたりの1日紹介上限（referrals）", values["referrals"], "5", "number")
-        + field_text("market_start", "市場開始（market_start）", values["market_start"])
+        + field_text("referrals", "1人あたりの1日紹介上限（referrals、0〜5）", values["referrals"], "5", "number")
+        + field_text("training_window_days", "学習ウィンドウ日数（training_window_days、省略可）",
+                     values["training_window_days"], "1,30,365")
+        + field_text("training_referrals_per_day", "warmup学習の1日紹介数（training_referrals_per_day、省略可）",
+                     values["training_referrals_per_day"], "10000", "number")
+        + field_text("negative_reservoir_size", "負例プールサイズ（negative_reservoir_size、省略可）",
+                     values["negative_reservoir_size"], "100000", "number")
+        + '<p class="hint">学習設定を空欄にすると MarketConfig の既定値を使います。'
+          'warmup が生成日数以上の場合は学習されず全スコアがNULLになります（エラーではありません）。</p>'
+        + field_text("market_start", "市場開始（market_start、UTCオフセット付きISO 8601）",
+                     values["market_start"], "2025-01-01T00:00:00+09:00")
         + field_select("format", "出力形式", values["format"], format_options())
         + field_textarea("advanced_config", "上級者向けconfig（JSON、省略可）", values["advanced_config"], 4,
-                         "MarketConfig の項目のみ上書きできます。market_start はフォームの値が優先されます。")
+                         "MarketConfig の項目のみ上書きできます。フォームの値とCLIフラグが優先されます。")
         + '<p>実行先: <code>runs/gui/&lt;タイムスタンプ&gt;</code>（自動作成。既存の出力は上書きしません）</p>'
     )
 
