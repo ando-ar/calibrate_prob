@@ -1,7 +1,6 @@
-/competitions/
+/competitions/*
 !/competitions/competition1/
-!/competitions/competition1/**
-!/competitions/competition2/**
+!/competitions/competition2/
 .ruff_cache/
 .ty_cache/
 .mypy_cache/
