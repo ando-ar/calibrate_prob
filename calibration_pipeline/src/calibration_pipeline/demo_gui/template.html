@@ -65,7 +65,7 @@
   <h2>固定fixture DBの内容確認</h2>
   <p>閲覧・学習・推論の使用DB：<code>${fixture_path}</code></p>
   <p>閲覧は読み取り専用です。学習・推論もこのDBをrunにコピーして使い、元DBを書き換えません。DBの選択・変更はできません。<a href="/#fixture">内容を再読み込み</a></p>
-  <p>truthは生成時の潜在確率などの検証用データ（既定の学習・推論では不使用）、eventsは合成イベント履歴、scored_referralsは学習用にID・日時・スコアを整えたビュー、user_feature_dailyは日付ごとの求職者特徴量です。user_id / item_idは求職者 / 求人ID、shoukai_dtは紹介日時、oubo_dtは応募日時、oubo_scoreは元スコア、seeker_skillは合成のスキル値、snapshot_dateは特徴量の基準日です。labelとrow_roleは学習SQLで作る列で、DBの列ではありません。</p>
+  <p>user / item は求職者・求人のマスター、user_latent / item_latent / events_latent は生成時の潜在確率などの検証用データ（既定の学習・推論では不使用）、events は合成イベント履歴、daily は日次集計、scored_referrals は学習用にID・日時・スコアを整えたビュー、user_feature_daily は日付ごとの求職者特徴量です。user_id / item_id は求職者 / 求人ID、shoukai_dt は紹介日時、oubo_dt は応募日時、model_apply_score は元スコア、seeker_skill は合成のスキル値、snapshot_date は特徴量の基準日です。label と row_role は学習SQLで作る列で、DBの列ではありません。</p>
   ${fixture_preview}
   <p><a href="/?tab=train#train">確認して学習へ進む</a> ／ <a href="/?tab=inference#inference">推論へ進む</a></p>
 </section>

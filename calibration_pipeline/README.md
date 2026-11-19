@@ -65,7 +65,7 @@ SQLiteで `--sqlite-fixture` を指定した場合は、DBも `input/sqlite_fixt
 
 ```toml
 [model]
-score = "oubo_score"
+score = "model_apply_score"
 label = "label"
 probability = "oubo_prob"
 numeric_features = ["seeker_skill"]

@@ -37,7 +37,7 @@ cd ../synthetic_funnel
 uv run --locked python -m synthetic_funnel --run-dir <一時dir>/market --format sqlite
 ```
 
-`prepare_example.py` の `MARKET_CONFIG` から `input/config.json` を作ります。現在の設定は `market_start=2024-01-01`、`days=600`、`warmup=400`、`seed=71`、`seeker_arrivals/job_arrivals=7`（CLIの `--seeker-arrivals` / `--job-arrivals` に相当）、`application_days=20`、`posting_days=40`、`referrals=1` です。8種類ずつの日本語の職種・地域からペアを絞るため、3段階すべてを観測できる十分なwarmup規模が必要です。この設定では約57,700件の `events`（うち約19,600件がスコア付き）と約24MBのSQLite DBができます。市場の `output/dataset.sqlite.db` に `schema.sql` のビュー・派生テーブルを追加したものがfixtureです。候補CSVの `model_apply_score` は市場の最後のスコア付き紹介8件の値です。
+`prepare_example.py` の `MARKET_CONFIG` から `input/config.json` を作ります。現在の設定は `market_start=2024-01-01`、`days=600`、`warmup=400`、`seed=73`、`seeker_arrivals/job_arrivals=7`（CLIの `--seeker-arrivals` / `--job-arrivals` に相当）、`application_days=20`、`posting_days=40`、`referrals=1` です。8種類ずつの日本語の職種・地域からペアを絞るため、3段階すべてを観測できる十分なwarmup規模が必要です。seedはwarmup期間中に3段階それぞれ最低2件の観測結果が得られる値で、issue #40の市場乱数変更に合わせて再選定しています。この設定では約58,600件の `events`（うち約20,600件がスコア付き）と約34MBのSQLite DBができます。市場の `output/dataset.sqlite.db` に `schema.sql` のビュー・派生テーブルを追加したものがfixtureです。候補CSVの `model_apply_score` は市場の最後のスコア付き紹介8件の値です。
 
 `experiments/example_oubo/` の設定・SQL・CSV・評価指標・プロット・メタデータは保存します。DBとモデルは除外します。このページの学習・推論コマンドで新しいrunにDBとモデルを作成できます。保存済みメタデータは当時の記録です。再実行時には別のrun ID・ハッシュが記録されます。他のexperimentはignore対象です。
 

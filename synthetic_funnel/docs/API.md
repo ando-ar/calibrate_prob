@@ -24,7 +24,7 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 | API | 入力と返り値 |
 | --- | --- |
 | `MarketConfig` | 市場の設定データクラス。`seed`、`seeker_arrivals`、`job_arrivals`、`days`、`warmup`、`application_days`、`posting_days`、`referrals`、warmup学習の設定。 |
-| `write_market_dataset(config, output, *, market_start, output_format="sqlite", progress=None)` | 市場をシミュレーションし、warmup学習で全紹介をスコア付けして、新しいディレクトリに5テーブルと `manifest.json` を保存する。manifestの辞書を返す。 |
+| `write_market_dataset(config, output, *, market_start, output_format="sqlite", progress=None)` | 市場をシミュレーションし、warmup学習で全紹介をスコア付けして、新しいディレクトリに7テーブル（`user` / `item` / `user_latent` / `item_latent` / `events` / `events_latent` / `daily`）と `manifest.json` を保存する。manifestの辞書を返す。 |
 | `generate_seeds(config, output, seeds, *, jobs=None, output_format="sqlite", ...)` | 複数 seed を並列生成する。seed ごとに独立プロセスを1つ使い、`output/seed-<n>/` に保存。`{seed: {"output": path, "rows": count}}` を返す。既定の並列数は CPU コア数。 |
 | `simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_index=None, branch_seed=None, daily_stats=None)` | `synthetic_funnel.market` の関数。紹介行と求職者・求人の属性配列を返す。出力せずに検証するときに使う。 |
 | `extract(rows, horizon, stage, period, as_of, mode, ...)` | `synthetic_funnel.market` の関数。成熟した段階のリスク集合を抽出する。 |
