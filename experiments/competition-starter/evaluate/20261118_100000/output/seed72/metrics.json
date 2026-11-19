@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "metrics": {
+    "macro_daily_replay_fee_yen": 0.0,
+    "total_replay_fee_yen": 0.0,
+    "replay_selected_positives": 0,
+    "replay_positive_capture": null,
+    "macro_daily_logged_fee_yen": 0.0,
+    "macro_daily_counterfactual_fee_yen": 4906.279502470227
+  },
+  "evaluation_scope": {
+    "primary": "replay_policy_dependent_observed_fee",
+    "logged": "logged_cohort_only_not_counterfactual_revenue",
+    "counterfactual": "organizer_only_candidates_latent_not_for_ranking",
+    "undecided_policy": "undecided_rows_excluded_not_zero",
+    "fallback": false
+  },
+  "config": {
+    "horizon": "3_calendar_months",
+    "max_per_user_per_day": 5,
+    "daily_budget_per_active_user": 5,
+    "daily_budget": null,
+    "partition_field": null,
+    "max_training_rows": 300000,
+    "fallback_seeds": 20
+  },
+  "data_version": {
+    "manifest_sha256": "1947438f8a7415d978b13e46d5148e4951e529cbe234491ba5c869dcab1ea718",
+    "generator_version": "0.12.0"
+  },
+  "evaluation": {
+    "eval_days": [
+      "2026-02-05T00:00:00+09:00",
+      "2026-02-06T00:00:00+09:00",
+      "2026-02-07T00:00:00+09:00"
+    ],
+    "horizon": "3_calendar_months",
+    "horizon_end": "2026-05-07T00:00:00+09:00",
+    "observation_end_exclusive": "2027-01-01T00:00:00+09:00",
+    "budget_audit": {
+      "2026-02-05T00:00:00+09:00": {
+        "submitted": 405,
+        "deduplicated": 405,
+        "per_user_capped": 308,
+        "active_users": 96,
+        "total_budget": 480,
+        "selected": 308
+      },
+      "2026-02-06T00:00:00+09:00": {
+        "submitted": 382,
+        "deduplicated": 382,
+        "per_user_capped": 296,
+        "active_users": 95,
+        "total_budget": 475,
+        "selected": 296
+      },
+      "2026-02-07T00:00:00+09:00": {
+        "submitted": 371,
+        "deduplicated": 371,
+        "per_user_capped": 301,
+        "active_users": 100,
+        "total_budget": 500,
+        "selected": 301
+      }
+    },
+    "replay_skipped_pairs": 560,
+    "replay_skip_reasons": {
+      "no_seeker": 136,
+      "seen": 424
+    }
+  },
+  "fallback": null
+}

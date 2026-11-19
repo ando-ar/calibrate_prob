@@ -1,6 +1,6 @@
 [model]
 # 学習SQLが返す元スコアの列名。欠損のない有限値の数値が必要です。
-score = "oubo_score"
+score = "model_apply_score"
 # 学習SQLが返す確定ラベルの列名。0か1の数値が必要です。
 label = "label"
 # 推論の出力に付ける予測確率の列名。学習SQLの戻り値には不要です。

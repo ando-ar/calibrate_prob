@@ -1,0 +1,35 @@
+# Copy this file to experiments/<name>/<stage>/<run_id>/input/config.toml.
+# Paths are relative to the run directory. See synthetic_funnel/docs/COMPETITION.md.
+
+[run]
+experiment_name = "<experiment_name>"
+stage = "<train|select|evaluate>"
+author = "<name>"
+hypothesis = "<what change is expected to improve the replay fee and why>"
+git_commit = "<commit>"
+evaluator_version = "<version>"
+
+[data]
+manifest = "<path to the distributed manifest.json>"
+manifest_sha256 = "<sha256; recorded as data_version in run_metadata.json>"
+horizon_days = 90 # 3 calendar months by default; 120 for legacy compatibility
+
+[seeds]
+market = 71
+participant = 42
+sql = 42
+
+[learning]
+max_training_rows = 300000 # 50000-500000; full extraction is not allowed
+extraction_strategy = "<uniform|stage|...>"
+# Record the actual acquired row counts and selection rates in run_metadata.json.
+
+[ranking]
+max_per_user_per_day = 5
+daily_budget_per_active_user = 5
+# daily_budget = 100000 # optional absolute cap; smaller of the two applies
+ranking_rule = "<p_times_fee|odds_times_fee|other>"
+fee_rate = 0.33
+
+[submission]
+path = "<path to submission.parquet or submission.csv>"

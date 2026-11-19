@@ -21,53 +21,51 @@ from .runner import CommandResult, Runner, cli_command, subprocess_runner
 SAMPLE_ROWS = 100
 STAGE_COLUMNS = ("oubo_dt", "shorui_tsuuka_dt", "kettei_dt")
 STAGE_LABELS = ("応募", "書類通過", "決定")
-TABS = ("generate", "market", "results")
+TABS = ("market", "results")
 FORM_KEYS = {
-    "generate": ("rows", "seed", "referral_start", "referral_end", "as_of", "reference_rows",
-                 "reference_seed", "legacy_scores", "format", "advanced_config"),
-    "market": ("seed", "seeker_arrivals", "job_arrivals", "days", "application_days", "posting_days",
-               "referrals", "market_start", "legacy_models", "retain", "format", "advanced_config"),
+    "market": ("seed", "seeker_arrivals", "job_arrivals", "days", "warmup", "application_days",
+               "posting_days", "referrals", "training_window_days", "training_referrals_per_day",
+               "negative_reservoir_size", "market_start", "format", "advanced_config"),
 }
 DEFAULT_VALUES = {
-    "generate": {
-        "rows": "500", "seed": "42",
-        "referral_start": "2024-01-01T00:00:00+09:00", "referral_end": "2025-12-31T00:00:00+09:00",
-        "as_of": "2026-02-01T00:00:00+09:00",
-        "reference_rows": "1000", "reference_seed": "90210",
-        "legacy_scores": "off", "format": "sqlite", "advanced_config": "{}",
-    },
     "market": {
-        "seed": "71", "seeker_arrivals": "8", "job_arrivals": "8", "days": "90",
+        "seed": "71", "seeker_arrivals": "8", "job_arrivals": "8", "days": "90", "warmup": "365",
         "application_days": "20", "posting_days": "40", "referrals": "5",
-        "market_start": "2025-01-01T00:00:00+09:00", "legacy_models": "",
-        "retain": "all", "format": "sqlite", "advanced_config": "{}",
+        "training_window_days": "", "training_referrals_per_day": "", "negative_reservoir_size": "",
+        "market_start": "2025-01-01T00:00:00+09:00", "format": "sqlite", "advanced_config": "{}",
     },
 }
-FUNNEL_INT_FIELDS = {
-    "rows": ("件数", 1), "seed": ("seed", None),
-    "reference_rows": ("reference_rows", 100), "reference_seed": ("reference_seed", None),
-}
+# (label, minimum, maximum). None means no bound.
 MARKET_INT_FIELDS = {
-    "seed": ("seed", None), "seeker_arrivals": ("seeker_arrivals", 0), "job_arrivals": ("job_arrivals", 0),
-    "days": ("days", 1), "application_days": ("application_days", 1), "posting_days": ("posting_days", 1),
-    "referrals": ("referrals", 0),
+    "seed": ("seed", None, None), "seeker_arrivals": ("seeker_arrivals", 0, None),
+    "job_arrivals": ("job_arrivals", 0, None),
+    "days": ("days", 1, None), "warmup": ("warmup", 0, None),
+    "application_days": ("application_days", 1, None), "posting_days": ("posting_days", 1, None),
+    "referrals": ("referrals", 0, 5),
+}
+# Optional warmup-training fields: blank means "use the MarketConfig default".
+MARKET_OPTIONAL_INT_FIELDS = {
+    "training_referrals_per_day": ("warmup学習の1日あたり紹介数", 1),
+    "negative_reservoir_size": ("負例プールのサイズ", 1),
+}
+TRAINING_WINDOW_HINT = "training_window_days は1以上の整数をカンマ区切りで3つ指定してください"
+MARKET_COUNT_LABELS = {
+    "user": "求職者（user）", "item": "求人（item）", "events": "紹介（events）",
+    "events_latent": "events_latent（反実仮）", "user_latent": "求職者の意欲（user_latent）",
+    "item_latent": "求人の意欲（item_latent）", "daily": "市場日（daily）",
 }
 ERROR_HINTS = (
-    ("rows must be a positive integer", "件数は1以上の整数で指定してください。"),
-    ("reference_rows must be an integer >= 100", "reference_rows は100以上の整数で指定してください。"),
-    ("Require referral_start <= referral_end <= as_of",
-     "紹介開始・紹介終了・観測締切（as_of）はその順で並ぶ必要があります。"),
     ("isoformat", "日時は ISO 8601 形式で指定してください（例: 2024-01-01T00:00:00+09:00）。"),
     ("must be a JSON object", "configはJSONオブジェクトで指定してください。"),
-    ("legacy_models",
-     "legacy_models.json のパスを確認してください。通常は「生成」タブで legacy_scores を有効にして実行した run の"
-     " output/legacy_models.json を指定します。"),
-    ("training_cutoff", "legacy_models の学習締切は market_start 以前である必要があります。"),
+    ("market_start", "market_start を ISO 8601 形式の文字列で指定してください。"),
+    ("Removed config keys", "廃止された設定キーが含まれています。MarketConfig の項目だけを指定してください。"),
+    ("Arrivals must be nonnegative integers", "流入数は0以上の整数で指定してください。"),
+    ("Durations must be positive integers", "日数は1以上の整数で指定してください。"),
+    ("warmup must be a nonnegative integer", "warmup は0以上の整数で指定してください。"),
     ("Daily referrals", "referrals は0〜5の整数で指定してください。"),
-    ("Probability ranges",
-     "base_probabilities と probability_half_widths の各段階の確率が0〜1の範囲に収まる必要があります。"),
-    ("market_start and legacy_models as strings",
-     "market_start と legacy_models は文字列で指定する必要があります。"),
+    ("training_window_days requires three positive integers", TRAINING_WINDOW_HINT + "。"),
+    ("Training density and reservoir size must be positive integers",
+     "warmup学習の紹介数と負例プールサイズは1以上の整数で指定してください。"),
 )
 
 
@@ -130,10 +128,27 @@ def parse_advanced(form: dict[str, str]) -> tuple[dict | None, str]:
 
 
 def collect_integers(values: dict, errors: list[str], form: dict[str, str], fields: dict) -> None:
-    """Fill integer form fields into values, recording validation errors."""
-    for name, (label, minimum) in fields.items():
+    """Fill required integer form fields into values, recording validation errors."""
+    for name, (label, minimum, maximum) in fields.items():
         value, error = parse_int(label, form.get(name, ""))
         if not error and minimum is not None and value < minimum:
+            error = f"{label}は{minimum}以上の整数で指定してください"
+        if not error and maximum is not None and value > maximum:
+            error = f"{label}は{maximum}以下の整数で指定してください"
+        if error:
+            errors.append(error)
+        else:
+            values[name] = value
+
+
+def collect_optional_integers(values: dict, errors: list[str], form: dict[str, str], fields: dict) -> None:
+    """Fill optional positive-integer fields; blank fields are left out so defaults apply."""
+    for name, (label, minimum) in fields.items():
+        text = (form.get(name, "") or "").strip()
+        if not text:
+            continue
+        value, error = parse_int(label, text)
+        if not error and value < minimum:
             error = f"{label}は{minimum}以上の整数で指定してください"
         if error:
             errors.append(error)
@@ -141,55 +156,53 @@ def collect_integers(values: dict, errors: list[str], form: dict[str, str], fiel
             values[name] = value
 
 
-def build_funnel_values(form: dict[str, str]) -> tuple[dict | None, str]:
-    """Turn generate-tab form values into a funnel config JSON object."""
-    values: dict = {}
-    errors: list[str] = []
-    collect_integers(values, errors, form, FUNNEL_INT_FIELDS)
-    for name, label in (("referral_start", "紹介開始"), ("referral_end", "紹介終了"), ("as_of", "観測締切")):
-        text = form.get(name, "").strip()
-        if not text:
-            errors.append(f"{label}（{name}）を入力してください")
-        else:
-            values[name] = text
-    advanced, error = parse_advanced(form)
-    if error:
-        errors.append(error)
-    advanced = advanced or {}
-    legacy = advanced.pop("legacy_scores", {})
-    values["legacy_scores"] = {**legacy, "enabled": form.get("legacy_scores") == "on"} \
-        if isinstance(legacy, dict) else {"enabled": form.get("legacy_scores") == "on"}
-    values = {**advanced, **values}
-    if errors:
-        return None, "\n".join(errors)
-    return values, ""
+def collect_training_window(values: dict, errors: list[str], form: dict[str, str]) -> None:
+    """Parse the comma-separated training_window_days field (three positive ints)."""
+    text = (form.get("training_window_days", "") or "").strip()
+    if not text:
+        return
+    parts = [part.strip() for part in text.split(",")]
+    numbers: list[int] = []
+    for part in parts:
+        value, error = parse_int("training_window_days", part)
+        if error or value < 1:
+            errors.append(TRAINING_WINDOW_HINT)
+            return
+        numbers.append(value)
+    if len(numbers) != 3:
+        errors.append(TRAINING_WINDOW_HINT)
+        return
+    values["training_window_days"] = numbers
 
 
-def build_market_values(state: GuiState, form: dict[str, str]) -> tuple[dict | None, str]:
+def parse_market_start(form: dict[str, str], errors: list[str]) -> str | None:
+    """Validate that market_start is an ISO 8601 datetime carrying a UTC offset."""
+    text = (form.get("market_start", "") or "").strip()
+    if not text:
+        errors.append("market_start を入力してください")
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        errors.append("market_start は UTC オフセット付きの ISO 8601 日時で指定してください"
+                      "（例: 2025-01-01T00:00:00+09:00）")
+        return None
+    if parsed.utcoffset() is None:
+        errors.append("market_start には UTC オフセット（例: +09:00）を含めてください")
+        return None
+    return text
+
+
+def build_market_values(form: dict[str, str]) -> tuple[dict | None, str]:
     """Turn market-tab form values into a market config JSON object."""
     values: dict = {}
     errors: list[str] = []
     collect_integers(values, errors, form, MARKET_INT_FIELDS)
-    market_start = form.get("market_start", "").strip()
-    if not market_start:
-        errors.append("market_start を入力してください")
-    else:
+    collect_optional_integers(values, errors, form, MARKET_OPTIONAL_INT_FIELDS)
+    collect_training_window(values, errors, form)
+    market_start = parse_market_start(form, errors)
+    if market_start is not None:
         values["market_start"] = market_start
-    retain = form.get("retain", "all")
-    values["retain"] = retain if retain in ("all", "applications") else "all"
-    raw = form.get("legacy_models", "").strip()
-    if not raw:
-        errors.append(
-            "legacy_models.json のパスを入力してください。「生成」タブで legacy_scores を有効にして実行すると出力されます。"
-        )
-    else:
-        path = Path(raw)
-        if not path.is_absolute():
-            path = state.base / path
-        if not path.is_file():
-            errors.append(f"legacy_models ファイルが見つかりません: {raw}")
-        else:
-            values["legacy_models"] = str(path.resolve())
     advanced, error = parse_advanced(form)
     if error:
         errors.append(error)
@@ -229,10 +242,10 @@ def error_hint(stderr: str) -> str:
     return ""
 
 
-def run_generation(state: GuiState, form: dict[str, str], *, market: bool) -> StepResult:
-    """Write input/config.json into a new run directory and run the funnel CLI."""
-    title = "市場データ生成" if market else "紹介履歴生成"
-    values, error = build_market_values(state, form) if market else build_funnel_values(form)
+def run_generation(state: GuiState, form: dict[str, str]) -> StepResult:
+    """Write input/config.json into a new run directory and run the market CLI."""
+    title = "市場データ生成"
+    values, error = build_market_values(form)
     if error:
         detail = f'<p class="hint">{html.escape(error)}</p>'
         return StepResult(title, "（実行せずに中断）", CommandResult([], 2, "", ""), detail=detail)
@@ -241,9 +254,11 @@ def run_generation(state: GuiState, form: dict[str, str], *, market: bool) -> St
     (run_dir / "input").mkdir(parents=True)
     (run_dir / "input" / "config.json").write_text(
         json.dumps(values, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    argv = ["--run-dir", str(run_dir), "--progress", "--format", fmt]
-    if market:
-        argv.append("--market")
+    # Arrivals are passed as CLI overrides: they take precedence over whatever
+    # is stored in input/config.json (which still keeps a reproducible copy).
+    argv = ["--run-dir", str(run_dir), "--progress", "--format", fmt,
+            "--seeker-arrivals", str(values["seeker_arrivals"]),
+            "--job-arrivals", str(values["job_arrivals"])]
     command = cli_command(argv)
     result = state.runner(command)
     detail = ""
@@ -427,25 +442,6 @@ def run_status(run_dir: Path) -> str:
     return "未実行"
 
 
-def percent(value: object) -> str:
-    """Render a rate as a percentage, or a dash when unknown."""
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return "—"
-    return f"{value * 100:.2f}%"
-
-
-def rate_table(manifest: dict) -> str:
-    """Render expected versus realized transition rates from a funnel manifest."""
-    expected = manifest.get("generated_expected_rates") or []
-    realized = manifest.get("generated_realized_rates") or []
-    rows = [
-        (label, percent(expected[index] if index < len(expected) else None),
-         percent(realized[index] if index < len(realized) else None))
-        for index, label in enumerate(STAGE_LABELS)
-    ]
-    return html_table(("到達段階", "真の条件付き確率（生成時の期待）", "観測された到達率"), rows)
-
-
 def counts_table(counts: dict) -> str:
     """Render funnel event counts."""
     rows = [("紹介（events の行数）", f"{counts['total']:,}")]
@@ -456,12 +452,39 @@ def counts_table(counts: dict) -> str:
 
 
 def market_counts_table(manifest: dict) -> str:
-    """Render the row counts recorded in a market manifest."""
+    """Render every row-count entry recorded in a market manifest (no fixed table list)."""
     row_counts = manifest.get("row_counts") or {}
-    labels = {"events": "紹介（events）", "truth": "truth", "seekers": "求職者（seekers）",
-              "jobs": "求人（jobs）", "daily": "市場日（daily）"}
-    rows = [(label, f"{row_counts[key]:,}") for key, label in labels.items() if key in row_counts]
+    if not isinstance(row_counts, dict) or not row_counts:
+        return "<p>row_counts がありません。</p>"
+    rows = []
+    for key in sorted(row_counts):
+        count = row_counts[key]
+        label = MARKET_COUNT_LABELS.get(key, key)
+        value = f"{count:,}" if isinstance(count, int) else html.escape(str(count))
+        rows.append((label, value))
     return html_table(("テーブル", "件数"), rows)
+
+
+def manifest_highlights(manifest: dict) -> str:
+    """Render the manifest fields most useful to an operator, kept lightweight."""
+    rows: list[tuple[str, str]] = []
+
+    def add(label: str, value: object) -> None:
+        rows.append((label, "—" if value in (None, "") else html.escape(str(value))))
+
+    add("モード（mode）", manifest.get("mode"))
+    add("市場開始（market_start）", manifest.get("market_start"))
+    add("観測終了（observation_end_exclusive）", manifest.get("observation_end_exclusive"))
+    training = manifest.get("training")
+    if not isinstance(training, dict):
+        training = {}
+    for key, label in (("method", "学習手法（method）"), ("warmup", "warmup"),
+                       ("warmup_end", "warmup_end"), ("training_cutoff", "training_cutoff"),
+                       ("status", "学習ステータス（status）")):
+        add(label, training.get(key))
+    seconds = manifest.get("generation_seconds")
+    add("生成時間（generation_seconds）", f"{seconds:.3f} 秒" if isinstance(seconds, (int, float)) else seconds)
+    return html_table(("項目", "値"), rows)
 
 
 def dataset_content(manifest: dict, output: Path) -> str:
@@ -496,33 +519,23 @@ def success_detail(run_dir: Path, title: str) -> str:
     summary = ""
     if manifest is not None:
         summary += counts_table(counts) if counts is not None else "<p>events の件数を読み取れませんでした。</p>"
-        if manifest.get("mode") == "market":
-            summary += market_counts_table(manifest)
-        else:
-            summary += rate_table(manifest)
+        summary += market_counts_table(manifest)
         summary += (
-            "<p>紹介件数は設定した件数で、後段の件数は標本と観測締切で変わります。"
-            "真の確率は truth テーブルの p_*、観測値は events の日時列を確認してください。</p>"
+            "<p>観測された到達は市場の退出と観測締切の影響を受けます。退出を無視した真の確率は "
+            "events_latent の p_*、観測値は events の日時列を確認してください。</p>"
         )
     return f"<p>{html.escape(title)}が完了しました。出力先: <code>{html.escape(str(run_dir / 'output'))}</code></p>{summary}{link}"
 
 
 def run_entries(state: GuiState) -> list[dict]:
-    """List GUI runs with kind, status and headline counts."""
+    """List GUI runs with status and headline counts."""
     entries = []
     if state.runs_dir.is_dir():
         for path in sorted((item for item in state.runs_dir.iterdir() if item.is_dir()), reverse=True):
-            config = run_input_config(path)
             manifest = run_manifest(path)
-            market = bool(config and "market_start" in config)
-            if market and manifest:
-                rows = (manifest.get("row_counts") or {}).get("events")
-            elif manifest and isinstance(manifest.get("config"), dict):
-                rows = manifest["config"].get("rows")
-            else:
-                rows = None
+            rows = (manifest.get("row_counts") or {}).get("events") if manifest else None
             entries.append({
-                "id": path.name, "kind": "市場" if market else "紹介履歴",
+                "id": path.name, "kind": "市場",
                 "status": run_status(path), "rows": f"{rows:,}" if isinstance(rows, int) else "—",
             })
     return entries
@@ -532,7 +545,7 @@ def render_run_list(state: GuiState) -> str:
     """Render the table of past runs with links to their details."""
     entries = run_entries(state)
     if not entries:
-        return "<p>まだ実行がありません。「生成」または「市場」タブから実行してください。</p>"
+        return "<p>まだ実行がありません。「市場」タブから実行してください。</p>"
     header = "".join(f"<th>{label}</th>" for label in ("run ID", "種別", "状態", "紹介件数", "操作"))
     body = "".join(
         "<tr>"
@@ -565,20 +578,20 @@ def render_run_detail(state: GuiState, run_id: str) -> str:
     ]
     if status != "成功":
         sections.append(
-            "<p>このrunにはmanifestがありません。入力configを修正して「生成」タブから新しいrunとして実行してください。"
+            "<p>このrunにはmanifestがありません。入力configを修正して「市場」タブから新しいrunとして実行してください。"
             "失敗の原因は実行結果に表示されたCLIエラーを確認してください。</p>"
         )
     if manifest is not None:
+        sections.append(
+            f'<section class="card"><h3>manifest ハイライト</h3>{manifest_highlights(manifest)}</section>'
+        )
         sections.append('<section class="card"><h3>件数サマリ</h3>')
         counts = funnel_event_counts(output)
         sections.append(counts_table(counts) if counts is not None else "<p>events の件数を読み取れませんでした。</p>")
-        if manifest.get("mode") == "market":
-            sections.append(market_counts_table(manifest))
-        else:
-            sections.append(rate_table(manifest))
+        sections.append(market_counts_table(manifest))
         sections.append(
-            "<p>events の日時列は観測締切までに届いた到達だけが入り、truth の p_* は打ち切りを考えない真の確率です。"
-            "観測された到達率が真の確率より低くなるのは締切の影響です。</p>"
+            "<p>events の日時列は市場の退出と観測締切の影響を受けた到達だけが入り、events_latent の p_* は"
+            "退出を無視した反実仮の確率です。両者が一致しないのは市場の影響です。</p>"
         )
         sections.append("</section>")
         sections.append(f'<section class="card"><h3>テーブル内容</h3>{dataset_content(manifest, output)}</section>')
@@ -628,45 +641,35 @@ def field_textarea(name: str, label: str, value: str, rows: int, hint: str = "")
     )
 
 
-def render_generate_form(values: dict[str, str]) -> str:
-    """Render the generate-tab form fields."""
-    return (
-        field_text("rows", "紹介件数（rows）", values["rows"], "500", "number")
-        + field_text("seed", "seed", values["seed"], "42", "number")
-        + field_text("referral_start", "紹介開始（referral_start）", values["referral_start"])
-        + field_text("referral_end", "紹介終了（referral_end）", values["referral_end"])
-        + field_text("as_of", "観測締切（as_of）", values["as_of"])
-        + field_text("reference_rows", "学習用データ件数（reference_rows）", values["reference_rows"], "1000", "number")
-        + field_text("reference_seed", "学習用seed（reference_seed）", values["reference_seed"], "90210", "number")
-        + field_select("legacy_scores", "元モデルスコア生成（legacy_scores）", values["legacy_scores"],
-                       {"off": "無効（試用向け。出力が速い）", "on": "有効（legacy_models.json も出力する）"})
-        + field_select("format", "出力形式", values["format"], format_options())
-        + field_textarea("advanced_config", "上級者向けconfig（JSON、省略可）", values["advanced_config"], 6,
-                         "base_probabilities・probability_half_widths・skill_effects・mechanism・population・"
-                         "application_delay などを上書きできます。フォーム項目はフォームの値が優先され、"
-                         "legacy_scores の enabled は上の選択が優先されます。")
-        + '<p>実行先: <code>runs/gui/&lt;タイムスタンプ&gt;</code>（自動作成。既存の出力は上書きしません）</p>'
-    )
-
-
 def render_market_form(values: dict[str, str]) -> str:
     """Render the market-tab form fields."""
     return (
         field_text("seed", "seed", values["seed"], "71", "number")
-        + field_text("seeker_arrivals", "1日の求職者流入（seeker_arrivals）", values["seeker_arrivals"], "8", "number")
-        + field_text("job_arrivals", "1日の求人流入（job_arrivals）", values["job_arrivals"], "8", "number")
+        + field_text("seeker_arrivals", "1日の求職者流入（seeker_arrivals / --seeker-arrivals）",
+                     values["seeker_arrivals"], "8", "number")
+        + field_text("job_arrivals", "1日の求人流入（job_arrivals / --job-arrivals）",
+                     values["job_arrivals"], "8", "number")
+        + '<p class="hint">流入数はCLIの <code>--seeker-arrivals</code> / <code>--job-arrivals</code> '
+          'で設定ファイルの値を上書きして渡します。</p>'
         + field_text("days", "生成日数（days）", values["days"], "90", "number")
+        + field_text("warmup", "ウォームアップ日数（warmup）", values["warmup"], "365", "number")
         + field_text("application_days", "応募可能日数（application_days）", values["application_days"], "20", "number")
         + field_text("posting_days", "掲載日数（posting_days）", values["posting_days"], "40", "number")
-        + field_text("referrals", "1人あたりの1日紹介上限（referrals）", values["referrals"], "5", "number")
-        + field_text("market_start", "市場開始（market_start）", values["market_start"])
-        + field_text("legacy_models", "legacy_models.json のパス", values["legacy_models"],
-                     "runs/gui/<モデルrun>/output/legacy_models.json")
-        + field_select("retain", "保存内容（retain）", values["retain"],
-                       {"all": "all（全紹介を保存）", "applications": "applications（観測された応募のみ）"})
+        + field_text("referrals", "1人あたりの1日紹介上限（referrals、0〜5）", values["referrals"], "5", "number")
+        + field_text("training_window_days", "学習ウィンドウ日数（training_window_days、省略可）",
+                     values["training_window_days"], "1,30,365")
+        + field_text("training_referrals_per_day", "warmup学習の1日紹介数（training_referrals_per_day、省略可）",
+                     values["training_referrals_per_day"], "10000", "number")
+        + field_text("negative_reservoir_size", "負例プールサイズ（negative_reservoir_size、省略可）",
+                     values["negative_reservoir_size"], "100000", "number")
+        + '<p class="hint">学習設定を空欄にすると MarketConfig の既定値を使います。'
+          'warmup が生成日数以上の場合は学習されず全スコアがNULLになります（エラーではありません）。</p>'
+        + field_text("market_start", "市場開始（market_start、UTCオフセット付きISO 8601）",
+                     values["market_start"], "2025-01-01T00:00:00+09:00")
         + field_select("format", "出力形式", values["format"], format_options())
         + field_textarea("advanced_config", "上級者向けconfig（JSON、省略可）", values["advanced_config"], 4,
-                         "MarketConfig の項目のみ上書きできます。market_start・legacy_models・retain はフォームの値が優先されます。")
+                         "MarketConfig の項目のみ上書きできます。フォームの値とCLIフラグが優先されます。")
+        + '<p>実行先: <code>runs/gui/&lt;タイムスタンプ&gt;</code>（自動作成。既存の出力は上書きしません）</p>'
     )
 
 
@@ -676,26 +679,22 @@ def render_page(
     *,
     tab: str,
     values: dict[str, str],
-    generate_step: StepResult | None = None,
     market_step: StepResult | None = None,
     results_html: str = "",
     banner: str = "",
 ) -> str:
     """Render the full page for the active tab."""
     if tab not in TABS:
-        tab = "generate"
+        tab = "market"
     nav = "".join(
         f'<a href="/?tab={name}" class="{"active" if tab == name else "inactive"}">{label}</a>'
-        for name, label in zip(TABS, ("生成", "市場", "結果確認"), strict=True)
+        for name, label in zip(TABS, ("市場", "結果確認"), strict=True)
     )
     return template.substitute(
         nav=nav,
-        generate_tab_class="active" if tab == "generate" else "hidden",
         market_tab_class="active" if tab == "market" else "hidden",
         results_tab_class="active" if tab == "results" else "hidden",
         banner=html.escape(banner),
-        generate_form=render_generate_form(values if tab == "generate" else default_values("generate")),
-        generate_result=render_step(generate_step) if generate_step else "",
         market_form=render_market_form(values if tab == "market" else default_values("market")),
         market_result=render_step(market_step) if market_step else "",
         results_content=results_html,
@@ -735,7 +734,7 @@ def load_template() -> Template:
 
 def default_values(tab: str) -> dict[str, str]:
     """Pre-fill form fields with the light-trial defaults."""
-    return dict(DEFAULT_VALUES.get(tab, DEFAULT_VALUES["generate"]))
+    return dict(DEFAULT_VALUES.get(tab, DEFAULT_VALUES["market"]))
 
 
 def build_handler(state: GuiState, template: Template) -> type[BaseHTTPRequestHandler]:
@@ -746,9 +745,9 @@ def build_handler(state: GuiState, template: Template) -> type[BaseHTTPRequestHa
 
         def do_GET(self) -> None:
             query = parse_qs(urlparse(self.path).query)
-            tab = query.get("tab", ["generate"])[0]
+            tab = query.get("tab", ["market"])[0]
             if tab not in TABS:
-                tab = "generate"
+                tab = "market"
             results_html = ""
             if tab == "results":
                 run_id = query.get("run", [""])[0]
@@ -760,20 +759,16 @@ def build_handler(state: GuiState, template: Template) -> type[BaseHTTPRequestHa
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length).decode("utf-8")
             form = {key: values[0] for key, values in parse_qs(body, keep_blank_values=True).items()}
-            action = form.get("action", "")
-            market = action == "market"
-            tab = "market" if market else "generate"
-            if action not in ("generate", "market"):
-                page = render_page(state, template, tab="generate", values=default_values("generate"),
-                                   banner=f"未知のアクション: {action}")
+            if form.get("action", "") != "market":
+                page = render_page(state, template, tab="market", values=default_values("market"),
+                                   banner=f"未知のアクション: {form.get('action', '')}")
                 self.respond(page, 400)
                 return
+            tab = "market"
             keys = FORM_KEYS[tab]
             values = {**default_values(tab), **{key: value for key, value in form.items() if key in keys}}
-            step = run_generation(state, form, market=market)
-            page = render_page(state, template, tab=tab, values=values,
-                               generate_step=None if market else step,
-                               market_step=step if market else None)
+            step = run_generation(state, form)
+            page = render_page(state, template, tab=tab, values=values, market_step=step)
             self.respond(page, 200)
 
         def respond(self, page: str, status: int) -> None:

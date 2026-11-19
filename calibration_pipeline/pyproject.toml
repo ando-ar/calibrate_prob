@@ -31,6 +31,7 @@ docs = [
     "sphinx-autobuild>=2024.10.3,<2027",
 ]
 dev = [
+    "pytest>=8,<10",
     "ruff>=0.17.4",
     "ty>=0.0.100",
 ]

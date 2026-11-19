@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "metrics": {
+    "macro_daily_replay_fee_yen": 0.0,
+    "replay_fee_yen_std": 0.0,
+    "macro_daily_replay_fee_yen_per_seed": [
+      0.0,
+      0.0
+    ]
+  },
+  "evaluation_scope": {
+    "primary": "replay_unavailable_single_day_seed_amplified",
+    "logged": "logged_cohort_only_not_counterfactual_revenue",
+    "counterfactual": "organizer_only_candidates_latent_not_for_ranking",
+    "undecided_policy": "undecided_rows_excluded_not_zero",
+    "fallback": true
+  },
+  "evaluation": {
+    "seeds": 2,
+    "recommended_min_seeds": 20,
+    "single_day": true
+  }
+}

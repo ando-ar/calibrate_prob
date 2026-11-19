@@ -10,16 +10,35 @@ from tempfile import TemporaryDirectory
 
 FORMATS = ("sqlite", "parquet", "csv")
 SQLITE_FILENAME = "dataset.sqlite.db"
+# 16,384 rows is the measured sweet spot for both sqlite executemany and parquet
+# row groups at 50/50 arrivals; 65,536 was slightly slower for both (issue #40).
 BATCH_SIZE = 16384
 TEXT_FIELDS = {
     "event_id", "user_id", "item_id", "failure_stage", "failure_reason",
     "shoukai_dt", "oubo_dt", "shorui_tsuuka_dt", "kettei_dt",
     "latent_oubo_dt", "latent_shorui_tsuuka_dt", "latent_kettei_dt", "arrival_dt", "day_dt",
+    "departure_dt", "occupation", "region",
+    "status", "outcome_dt",
 }
 INTEGER_FIELDS = {
     "wants_remote", "allows_remote", "remote_mismatch", "other_applications", "competing_candidates",
-    "occupation", "region", "live_seekers", "live_jobs", "referrals",
+    "referrals",
+    "live_users", "live_items", "new_users", "new_items", "applications", "screenings", "decisions",
+    "auto",
 }
+# Created on every sqlite export so both the organiser DB and any copy of it
+# inherit the lookups used by the daily-candidate recipe.  The correlated
+# subqueries in market_candidates.DAILY_CANDIDATES_LATENT_SQL probe events by
+# (user_id, item_id) and by user_id/item_id with date predicates; without these
+# indexes each candidate scans the whole events table (issue #38).
+SQLITE_INDEXES = (
+    "CREATE INDEX events_shoukai_dt ON events (shoukai_dt)",
+    "CREATE INDEX idx_events_user ON events (user_id, oubo_dt, kettei_dt, outcome_dt)",
+    "CREATE INDEX idx_events_item ON events (item_id, oubo_dt, kettei_dt, outcome_dt)",
+    "CREATE INDEX idx_events_user_item ON events (user_id, item_id)",
+    "CREATE INDEX idx_user_occupation ON user (occupation, arrival_dt, departure_dt)",
+    "CREATE INDEX idx_item_occupation ON item (occupation, arrival_dt, departure_dt)",
+)
 
 
 @dataclass(frozen=True)
@@ -84,7 +103,15 @@ def write_csv(output, tables, records):
 
 
 def write_sqlite(output, tables, records):
+    # The database is built in a staging directory that is renamed into place
+    # only after this function returns, so a crash can never publish a partial
+    # file.  Skipping rollback journalling/fsync and caching more pages therefore
+    # changes only write speed, not the published bytes (issue #40).
     with closing(sqlite3.connect(output / SQLITE_FILENAME)) as database, database:
+        database.execute("PRAGMA journal_mode = OFF")
+        database.execute("PRAGMA synchronous = OFF")
+        database.execute("PRAGMA temp_store = MEMORY")
+        database.execute("PRAGMA cache_size = -65536")
         database.execute("PRAGMA foreign_keys = ON")
         insert_statements = {}
         for table in tables:
@@ -102,7 +129,10 @@ def write_sqlite(output, tables, records):
             insert_statements[table.name] = f"INSERT INTO {table.name} ({columns}) VALUES ({placeholders})"
         for table, rows in records:
             database.executemany(insert_statements[table.name], typed_rows(rows, table.fields))
-        database.execute("CREATE INDEX events_shoukai_dt ON events (shoukai_dt)")
+        # Indexes are created only after every row is inserted: maintaining the
+        # six lookups per row is ~31% slower on a 50/50 x 180-day dataset.
+        for statement in SQLITE_INDEXES:
+            database.execute(statement)
 
 
 def write_parquet(output, tables, records):

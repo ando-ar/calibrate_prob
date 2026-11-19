@@ -1,0 +1,52 @@
+# Issue #39 market density survey -- generation configs (all seed=71).
+# market_start = "2025-01-01T00:00:00+09:00", referrals = 5,
+# application_days = 20, posting_days = 40, output_format = "sqlite".
+# Data was generated under a TEMP directory and is not committed.
+
+[[configs]]
+label = "base_20_180"      # fast reference
+days = 180
+warmup = 90
+seeker_arrivals = 20
+job_arrivals = 20
+seed = 71
+
+[[configs]]
+label = "arr_50_180"       # arrivals comparison
+days = 180
+warmup = 90
+seeker_arrivals = 50
+job_arrivals = 50
+seed = 71
+
+[[configs]]
+label = "arr_100_180"      # arrivals comparison
+days = 180
+warmup = 90
+seeker_arrivals = 100
+job_arrivals = 100
+seed = 71
+
+[[configs]]
+label = "arr_150_180"      # follow-up: larger arrivals
+days = 180
+warmup = 90
+seeker_arrivals = 150
+job_arrivals = 150
+seed = 71
+
+[[configs]]
+label = "arr_200_180"      # follow-up: larger arrivals
+days = 180
+warmup = 90
+seeker_arrivals = 200
+job_arrivals = 200
+seed = 71
+
+[[configs]]
+label = "proof_20_730"     # starter-kit proof config (duration comparison)
+days = 730
+warmup = 365
+seeker_arrivals = 20
+job_arrivals = 20
+seed = 71

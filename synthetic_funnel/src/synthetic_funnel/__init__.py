@@ -1,14 +1,14 @@
-"""Public API for a standalone synthetic referral funnel."""
-from .generator import VERSION as __version__
-from .generator import Config, Delay, generate, write_dataset
-from .legacy_scores import LegacyScores
-from .market import MarketConfig
+"""Public API for the standalone continuous-market synthetic referral funnel."""
+from .market import MarketConfig, OCCUPATIONS, REGIONS, ReplayIntroductions, replay_market
 from .market_export import write_market_dataset
 from .mechanism import Mechanism, pair_features, transition_probabilities
 from .population import Population
-from .rates import population_rates
+from .rates import RateAnchor, population_rates
+from .seed_batch import generate_seeds
+from .shared import VERSION as __version__
 
 __all__ = [
-    "Config", "Delay", "LegacyScores", "MarketConfig", "Mechanism", "Population", "__version__", "generate",
-    "pair_features", "population_rates", "transition_probabilities", "write_dataset", "write_market_dataset",
+    "MarketConfig", "Mechanism", "OCCUPATIONS", "Population", "RateAnchor", "REGIONS", "__version__",
+    "ReplayIntroductions", "generate_seeds", "pair_features", "population_rates", "replay_market",
+    "transition_probabilities", "write_market_dataset",
 ]
