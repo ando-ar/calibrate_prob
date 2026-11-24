@@ -20,7 +20,7 @@ from synthetic_funnel.market import (
 
 
 def tiled_gates(gates):
-    def evaluate(config,f,*args):
+    def evaluate(config,f,*args,**kwargs):
         return np.tile(np.asarray(gates),(len(f['skill_match']),1,1))
     return evaluate
 
@@ -106,7 +106,7 @@ class MarketTest(unittest.TestCase):
         self.assertEqual(sum(entry[8] for entry in daily),int(np.isfinite(r['decision']).sum()))
 
     def test_rules_exits_and_referral_caps(self):
-        def high_rates(config,f,*args):
+        def high_rates(config,f,*args,**kwargs):
             return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
 
         with patch('synthetic_funnel.market.probability_arrays',side_effect=high_rates):
@@ -166,13 +166,15 @@ class MarketTest(unittest.TestCase):
             if sid in seeker_decisions:self.assertEqual(departure,seeker_decisions[sid])
             elif np.isnan(departure):
                 # Still live past the window is only allowed with an unresolved case.
+                # The unresolved case may be awaiting screening or decision, so any
+                # case that has applied but not decided keeps the seeker live.
                 if s[sid,0]+20<=days-1:
-                    active=r[(r['seeker']==sid)&np.isfinite(r['screening'])&~np.isfinite(r['decision'])]
+                    active=r[(r['seeker']==sid)&np.isfinite(r['application'])&~np.isfinite(r['decision'])]
                     self.assertGreater(len(active),0)
             else:self.assertGreaterEqual(departure,s[sid,0]+20)
 
     def test_fee_rate_is_uniform_and_fee_yen_is_fixed_only_at_decision(self):
-        def high_rates(config,f,*args):
+        def high_rates(config,f,*args,**kwargs):
             return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
         config=MarketConfig(days=120,seeker_arrivals=5,job_arrivals=10,seed=71)
         with patch('synthetic_funnel.market.probability_arrays',side_effect=high_rates):
@@ -185,7 +187,7 @@ class MarketTest(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(rows['fee_yen'][~decided])))
 
     def test_competition_counters_follow_market_density(self):
-        def high_rates(config,f,*args):
+        def high_rates(config,f,*args,**kwargs):
             return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
 
         # Eight occupation and eight region categories make the referral pool far
@@ -209,30 +211,31 @@ class MarketTest(unittest.TestCase):
 class MarketOutcomeTest(unittest.TestCase):
     """issue #32: observed terminal outcomes for every finish() path."""
 
-    # Fingerprints for the issue #40 market stream (direct unseen sampling).
-    # The rejection loop was replaced by draws from each seeker's unseen pool,
-    # so these hashes intentionally differ from the pre-#40 (0.12.x) values.
+    # Fingerprints for the issue #46 market stream (occupation/region segment
+    # effects + temporal drift on top of the issue #40 direct unseen sampling).
+    # The added heterogeneity/drift shifts the funnel probabilities and therefore
+    # the market stream, so these hashes intentionally differ from the #40 values.
     # The latent counterfactual and training streams remain independent.
     PRE_CHANGE_GOLDEN = {
-        "application": "e473a8cbe06662ec49224685ad4c07928fd9be37761e358e9cbae872d843d9ea",
-        "screening": "3edea2e13255073e15baf8dd0f0ab6f81892e45cb1a2047626551c8889a0d747",
-        "decision": "3edea2e13255073e15baf8dd0f0ab6f81892e45cb1a2047626551c8889a0d747",
-        "pa": "edcfb1c7868b87987baac87375a844f71e5428cb74fe021bd068b366133b077b",
-        "ps": "507bf540bd3a0379ff42ee3a13e06acc4b1b828d02817594c1a83d4c913252b0",
-        "pd": "b211e2b0e4533ecb7789b968c0ff5ecba80a789852fea73727c2635301e2fdfc",
-        "p_candidate_application": "edcfb1c7868b87987baac87375a844f71e5428cb74fe021bd068b366133b077b",
-        "p_candidate_screening": "e89abad450ee936c7da4138a840e947b8de24aaa7dd821f928fdd3bf83d0a49d",
-        "p_candidate_decision": "0e39c80cc2e5c4e3ebf9790fff0de19ebd0ae5ebd0822167c5c09ab68aac4dc4",
-        "p_employer_application": "ea7ca650bd30c2c466a37fab0737a6e51cafe11d9d28f49a19182ed08e359ea6",
-        "p_employer_screening": "e3b2dcedf676550763c3a602d3f5df20c230c9eac2cc87458931a24887012f46",
-        "p_employer_decision": "d033da7c4eb13b1cd380f15d4a138b3a62e5ce293a8c7a19af00c52a303a2f6d",
-        "latent_oubo_dt": "ff50ffa4dea3f3d592167f20d53f026e56bcbde84969b3f85c15ba47ba573a23",
-        "latent_shorui_tsuuka_dt": "8789bc6d35a698e92bfc3db681c2227c51aed8539d4ac3017567dd09a786fc30",
-        "latent_kettei_dt": "3edea2e13255073e15baf8dd0f0ab6f81892e45cb1a2047626551c8889a0d747",
-        "failure_stage": "19abf011448bd60f9ad571e273e7e2ea292627a916efe7019bf031f80d8fb772",
-        "failure_reason": "8d206a40becc7d88f329c62787d0d81bf3c6c38e5ecc8c762453efd1cecde679",
+        "application": "bd5d99fe536a0cfe04ea46ec317d0401fa12efcad02e6e96287bb415ac23f431",
+        "screening": "ce4d2adda0d032f3d954e0d67c7817125383b871cad90e0e3a4217f4a3f79c07",
+        "decision": "a3183835d08b78250b9f0bf0a0ede456dd85dce38c22b14e1ed148fd6b97b1ca",
+        "pa": "2cd2a9fcf87331cf105de50d1f5a9401e225606271ea3f584331ea6a5b44d76b",
+        "ps": "4c003cd51635b696ac80e9831acc05034b56797248da40b9471835ecd9ffad36",
+        "pd": "ed22084ee343fdce04faec3dbda19867ab0356785ccfe81cf2dc18ab0740b4a7",
+        "p_candidate_application": "2cd2a9fcf87331cf105de50d1f5a9401e225606271ea3f584331ea6a5b44d76b",
+        "p_candidate_screening": "7f9c81d90e95a0a64a677acbfae9c87346da8a6b6e04e2a9c814c8dc96e6f56c",
+        "p_candidate_decision": "0d28f262ab8188378b78599c596daad3c0126c1e0d5f805398bdfbac75f55102",
+        "p_employer_application": "0cd21e588c9d7179e13190a635990964d3e55181d0a2c903980f979beac422fc",
+        "p_employer_screening": "7808a782b9af9d52e3e465aecc9a346c6d4f38158c2f10313a4c07c8cdb53ae2",
+        "p_employer_decision": "bb383ceb4580f4796754a83159b6ca0efc6e0864ba2939a0bd75f4cc9a3170f4",
+        "latent_oubo_dt": "cca586ac4e7ab8d7ea4a8357717606e9bcad2e7b6b8e21595f858ce3cd54830b",
+        "latent_shorui_tsuuka_dt": "a3183835d08b78250b9f0bf0a0ede456dd85dce38c22b14e1ed148fd6b97b1ca",
+        "latent_kettei_dt": "a3183835d08b78250b9f0bf0a0ede456dd85dce38c22b14e1ed148fd6b97b1ca",
+        "failure_stage": "a89dd1ad8ac509b32546998d400066a998d63fb678d985e25b9974fbf7004a44",
+        "failure_reason": "eba28b3e9440fd557eeb66dad20077f4ebd8ba4027111232cee207ea986c8efe",
     }
-    GOLDEN_ROWS = 1208
+    GOLDEN_ROWS = 1264
 
     def simulate_with_gates(self, gates, **overrides):
         options = dict(days=30, seeker_arrivals=5, job_arrivals=5, seed=7)

@@ -327,7 +327,7 @@ class MarketExportTest(unittest.TestCase):
         self.assertEqual(csv_outcomes, sqlite_outcomes)
 
     def test_fee_columns_are_consistent_across_formats(self):
-        def high_rates(config,f,*args):
+        def high_rates(config,f,*args,**kwargs):
             return np.tile(np.array([[.9,1.],[.95,.95],[.95,.95]]),(len(f['skill_match']),1,1))
         config = MarketConfig(days=60, seeker_arrivals=4, job_arrivals=5, seed=71)
         paths = {}

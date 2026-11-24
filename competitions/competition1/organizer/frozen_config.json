@@ -19,6 +19,11 @@
     "training_window_days": [1, 30, 365],
     "training_referrals_per_day": 10000,
     "negative_reservoir_size": 100000,
+    "segment_drift": {
+      "occupation_effects": [-0.25, -0.18, -0.09, 0.0, 0.0, 0.09, 0.18, 0.25],
+      "region_effects": [-0.12, -0.09, -0.045, 0.0, 0.0, 0.045, 0.09, 0.12],
+      "drift_amplitude": 0.5
+    },
     "output_format": "sqlite"
   },
 

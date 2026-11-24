@@ -29,13 +29,14 @@ CANDIDATE_ROWS = 8
 # decisions sparse, so a long warmup is needed for the in-market model to learn;
 # the 20/40-day stays let all three stages mature inside the three-month label
 # horizon. This yields ~59k events and a ~34MB SQLite warehouse.
-# issue #40 changed the market RNG stream, so the seed must yield at least two
-# observed decisions inside the warmup or the in-market models cannot train.
+# issue #40 changed the market RNG stream, and issue #46 (segment/drift) lowers
+# the warmup decision rate, so the seed must yield at least two observed
+# decisions inside the warmup or the in-market models cannot train.
 MARKET_CONFIG = {
     "market_start": "2024-01-01T00:00:00+09:00",
     "days": 600,
     "warmup": 400,
-    "seed": 73,
+    "seed": 27,
     "seeker_arrivals": 7,
     "job_arrivals": 7,
     "application_days": 20,

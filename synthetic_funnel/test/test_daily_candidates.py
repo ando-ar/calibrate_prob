@@ -33,6 +33,7 @@ OBSERVED_COLUMNS = {
 }
 LATENT_COLUMNS = OBSERVED_COLUMNS | {
     "skill_match", "skill_shortfall", "overqualification", "user_motivation", "item_motivation",
+    "seeker_occupation", "seeker_region", "item_occupation", "item_region",
 }
 
 
@@ -142,7 +143,7 @@ class DailyCandidatesTest(unittest.TestCase):
                 self.assertAlmostEqual(row["salary_shortfall"], max((desired_salary - offered_salary) / desired_salary, 0),
                                        places=12)
 
-            enriched = attach_latent_truth(rows, seed=self.seed)
+            enriched = attach_latent_truth(rows, seed=self.seed, days=CONFIG.days, day=DAY_INDEX)
             self.assertEqual(len(enriched), len(rows))
             self.assertNotIn("p_application_eventual", rows[0])  # the helper does not mutate its input
             for row in enriched:

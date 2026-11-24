@@ -14,7 +14,8 @@ the counterfactual probabilities, which SQL alone cannot compute.
 
 import numpy as np
 
-from .mechanism import probability_arrays
+from .market import OCCUPATION_INDEX, REGION_INDEX
+from .mechanism import SegmentDrift, probability_arrays
 from .rates import population_rates
 from .shared import FEATURE_FIELDS, STAGES, ProbabilityConfig
 
@@ -88,7 +89,11 @@ SELECT
     MAX(i.required_skill - u.user_skill, 0) AS skill_shortfall,
     MAX(u.user_skill - i.required_skill, 0) AS overqualification,
     ul.user_motivation AS user_motivation,
-    il.item_motivation AS item_motivation
+    il.item_motivation AS item_motivation,
+    u.occupation AS seeker_occupation,
+    u.region AS seeker_region,
+    i.occupation AS item_occupation,
+    i.region AS item_region
 FROM user AS u
 JOIN item AS i ON i.occupation = u.occupation
 JOIN user_latent AS ul USING (user_id)
@@ -118,22 +123,40 @@ def candidate_rows(connection, day, *, latent=False):
     return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
 
-def attach_latent_truth(rows, *, seed=71):
+def attach_latent_truth(rows, *, seed=71, segment_drift=None, days=None, day=None):
     """Add counterfactual p_* columns to stage-one candidate rows.
 
     ``seed`` must be the market seed recorded in ``manifest.json`` so the anchor
-    intercepts match the generating market.  The snapshot counts are exact now
-    that cancellations are observed, but p_* is still an estimate for a pair
-    that has never been introduced.
+    intercepts match the generating market.  ``segment_drift`` (a
+    :class:`~synthetic_funnel.mechanism.SegmentDrift` or its dict form) and
+    ``days``/``day`` (the market horizon and the candidate introduction-day
+    offset) reproduce the segment and temporal drift effects the market applies
+    at introduction, so ``p_decision_eventual`` matches what the market would
+    produce for the same pair.  When ``days``/``day`` are omitted the temporal
+    drift is skipped.  The snapshot counts are exact now that cancellations are
+    observed, but p_* is still an estimate for a pair that has never been
+    introduced.
     """
-    base = ProbabilityConfig(seed=seed)
+    if segment_drift is None:
+        segment_drift = SegmentDrift()
+    elif isinstance(segment_drift, dict):
+        segment_drift = SegmentDrift(**segment_drift)
+    base = ProbabilityConfig(seed=seed, segment_drift=segment_drift)
     anchors = population_rates(base).intercepts
     observed = {
         field: np.asarray([row[field] for row in rows], dtype=float) for field in FEATURE_FIELDS
     }
     seeker_motivation = np.asarray([row["user_motivation"] for row in rows], dtype=float)
     employer_motivation = np.asarray([row["item_motivation"] for row in rows], dtype=float)
-    gates = probability_arrays(base, observed, seeker_motivation, employer_motivation, anchors)
+    segment = (
+        np.asarray([OCCUPATION_INDEX[row["seeker_occupation"]] for row in rows]),
+        np.asarray([REGION_INDEX[row["seeker_region"]] for row in rows]),
+        np.asarray([OCCUPATION_INDEX[row["item_occupation"]] for row in rows]),
+        np.asarray([REGION_INDEX[row["item_region"]] for row in rows]),
+    )
+    day_array = None if (day is None or days is None) else np.full(len(rows), float(day))
+    gates = probability_arrays(base, observed, seeker_motivation, employer_motivation, anchors,
+                               segment=segment, day=day_array, days=days)
     enriched = []
     for index, row in enumerate(rows):
         result = dict(row)
