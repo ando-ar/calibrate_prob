@@ -119,7 +119,7 @@ seed 数を増やすよりも 1 seed あたりの流入数に予算を使う方�
 
 ## 4. 手数料の定義（issue #34 依存）
 
-前提タスク #34 が `events` の決定行に対して次を追加する契約を、本仕様は参照する。
+前提タスク #34 が次に示す手数料の列を追加する契約を、本仕様は参照する。配置は `fee_rate` が `item`、`fee_yen` が `events`（決定行のみ）で、`offered_salary` は `item` の既存列をそのまま使う。
 
 | 列 | 型 | 内容 |
 | --- | --- | --- |
@@ -313,4 +313,4 @@ issue #32 は `events` に `status` / `outcome_dt` / `auto` を追加する（�
 - [出力データ仕様](DATA_FORMAT.md)
 - [日次バッチ推論候補](DAILY_CANDIDATES.md)
 - [紹介履歴の確率モデル](PROBABILITY_MODEL.md)
-- [competition1 運営ルール（凍結 config・評価・提出）](../competitions/competition1/organizer/RULES.md)
+- [competition1 運営ルール（凍結 config・評価・提出）](https://github.com/ando-ar/calibrate_prob/blob/main/competitions/competition1/organizer/RULES.md)

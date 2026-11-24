@@ -7,7 +7,7 @@
 - 双方が D 時点で在籍中（`arrival_dt <= D < departure_dt`）
 - `occupation` が一致
 - `region` が一致するか、求人が `allows_remote = 1`
-- 給与フロア `max(100, offered_salary - 100) <= desired_salary`（シミュレータの紹介プールと同一）
+- 給与フロア `max(100, offered_salary - 100) <= desired_salary`。シミュレータの組み込み抽選は `bisect_left` による厳密な `<`（`max(100, offered_salary - 100) < desired_salary`、`market.py`）で、SQL の `<=` とは等号境界でのみ異なる。給与は連続値のため生成データ上では一致する。
 - 同じ `(user_id, item_id)` が `events` にない（未紹介）
 
 ## 2種類の出力
