@@ -13,7 +13,7 @@ from datetime import datetime
 
 import numpy as np
 
-from .mechanism import Mechanism, pair_features
+from .mechanism import Mechanism, SegmentDrift, pair_features
 from .population import Population
 
 VERSION = "0.12.0"
@@ -82,6 +82,7 @@ class ProbabilityConfig:
     skill_effects: tuple = SKILL_EFFECTS
     mechanism: Mechanism = field(default_factory=Mechanism)
     population: Population = field(default_factory=Population)
+    segment_drift: SegmentDrift = field(default_factory=SegmentDrift)
     reference_rows: int = REFERENCE_ROWS
     reference_seed: int = REFERENCE_SEED
 
@@ -93,6 +94,8 @@ class ProbabilityConfig:
             raise ValueError("Require referral_start <= referral_end <= as_of")
         if not isinstance(self.mechanism, Mechanism) or not isinstance(self.population, Population):
             raise TypeError("mechanism and population must be their respective dataclass instances")
+        if not isinstance(self.segment_drift, SegmentDrift):
+            raise TypeError("segment_drift must be a SegmentDrift instance")
         if type(self.reference_rows) is not int or self.reference_rows < 100:
             raise ValueError("reference_rows must be an integer >= 100")
         if type(self.reference_seed) is not int:
@@ -125,6 +128,8 @@ class ProbabilityConfig:
             values["mechanism"] = Mechanism(**values["mechanism"])
         if "population" in values:
             values["population"] = Population(**values["population"])
+        if "segment_drift" in values:
+            values["segment_drift"] = SegmentDrift(**values["segment_drift"])
         for name in ("base_probabilities", "probability_half_widths", "skill_effects"):
             if name in values:
                 values[name] = tuple(values[name])

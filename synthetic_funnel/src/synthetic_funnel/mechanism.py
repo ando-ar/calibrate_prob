@@ -6,6 +6,64 @@ import numpy as np
 
 
 @dataclass(frozen=True)
+class SegmentDrift:
+    """Gentle occupation/region heterogeneity and temporal drift (issue #46).
+
+    The decision stage (and, for drift, every stage) receives additive logit
+    offsets around the anchored population rate.  Occupation and region effects
+    are fixed per category and sum to zero across categories, and the drift is a
+    linear logit trend over the horizon that is zero at the midpoint, so the
+    overall expected rate stays at ``base_probabilities`` and the reference
+    population's anchor intercepts remain valid.
+
+    ``occupation_effects`` / ``region_effects`` map the eight category indices
+    (``OCCUPATIONS`` / ``REGIONS`` order) to logit offsets.  ``drift_amplitude``
+    is the half-amplitude in logit units: the offset at introduction day ``t`` of
+    a ``days``-day horizon is ``drift_amplitude * (2 * t / days - 1)``.
+    """
+
+    occupation_effects: tuple = (-0.25, -0.18, -0.09, 0.0, 0.0, 0.09, 0.18, 0.25)
+    region_effects: tuple = (-0.12, -0.09, -0.045, 0.0, 0.0, 0.045, 0.09, 0.12)
+    drift_amplitude: float = 0.5
+
+    def __post_init__(self):
+        for name in ("occupation_effects", "region_effects"):
+            values = getattr(self, name)
+            if len(values) != 8 or any(
+                type(x) not in (int, float) or not math.isfinite(x) for x in values
+            ):
+                raise ValueError(f"{name} must contain eight finite values")
+            object.__setattr__(self, name, tuple(values))
+        if type(self.drift_amplitude) not in (int, float) or not math.isfinite(self.drift_amplitude) or self.drift_amplitude < 0:
+            raise ValueError("drift_amplitude must be finite and nonnegative")
+
+
+def segment_decision_offsets(segment_drift, seeker_occupation, seeker_region,
+                             job_occupation, job_region):
+    """Decision-stage logit offsets for the seeker's and item's own side.
+
+    Each side is shifted by its own occupation and region effect (occupation
+    matches for every introduced pair; region may differ for remote items).
+    ``*_occupation``/``*_region`` are integer arrays of category indices.
+    """
+    occupation = np.asarray(segment_drift.occupation_effects)
+    region = np.asarray(segment_drift.region_effects)
+    candidate = occupation[np.asarray(seeker_occupation)] + region[np.asarray(seeker_region)]
+    employer = occupation[np.asarray(job_occupation)] + region[np.asarray(job_region)]
+    return candidate, employer
+
+
+def drift_offsets(segment_drift, day, days):
+    """Common logit offset for every stage at introduction day ``day``.
+
+    Linear in the normalized day so the offset is zero at the horizon midpoint
+    and reaches ``±drift_amplitude`` at the boundaries.
+    """
+    normalized = np.asarray(day, dtype=float) / days
+    return segment_drift.drift_amplitude * (2.0 * normalized - 1.0)
+
+
+@dataclass(frozen=True)
 class Mechanism:
     salary_penalties: tuple = (3.0, 1.0, 4.0)
     skill_shortfall_penalties: tuple = (0.0, 4.0, 2.0)
@@ -114,19 +172,40 @@ def array_sigmoid(values):
     return np.exp(-np.logaddexp(0, -np.asarray(values)))
 
 
-def probability_arrays(config, features, seeker_motivation=0.0, employer_motivation=0.0, intercepts=None):
-    """Return vectorized probabilities with shape (..., stage, side)."""
+def probability_arrays(config, features, seeker_motivation=0.0, employer_motivation=0.0, intercepts=None,
+                       segment=None, day=None, days=None):
+    """Return vectorized probabilities with shape (..., stage, side).
+
+    ``segment`` optionally supplies ``(seeker_occupation, seeker_region,
+    job_occupation, job_region)`` integer index arrays that add ``config``'s
+    segment effects to the decision-stage logits.  ``day`` (introduction-day
+    offsets) and ``days`` (horizon) optionally add the temporal drift to every
+    stage.  Both default to no offset, so the reference-population anchoring and
+    callers that omit them are unaffected.
+    """
     if intercepts is None:
         from .rates import population_rates
         intercepts = population_rates(config).intercepts
     scores = score_components(config, features, seeker_motivation, employer_motivation)
+    segment_drift = config.segment_drift
+    if day is not None:
+        drift = drift_offsets(segment_drift, day, days)
+    else:
+        drift = np.zeros_like(np.asarray(scores[0][0]))
+    if segment is not None:
+        seeker_occ, seeker_region, job_occ, job_region = segment
+        seg_candidate, seg_employer = segment_decision_offsets(
+            segment_drift, seeker_occ, seeker_region, job_occ, job_region)
     result = []
     for i, (c, e) in enumerate(scores):
+        c, e = c + drift, e + drift
         if i == 2:
             a = result[0][0] * result[0][1]
             s = result[1][0] * result[1][1]
             withdrawal, ng = configured_gap_penalties(a, s, config)
             c, e = c - withdrawal, e - ng
+            if segment is not None:
+                c, e = c + seg_candidate, e + seg_employer
         candidate, employer = bounded_gates(c + intercepts[i], e + intercepts[i], config, i)
         result.append((candidate, employer))
     return np.stack([np.stack(sides, axis=-1) for sides in result], axis=-2)

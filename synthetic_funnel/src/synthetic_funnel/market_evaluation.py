@@ -221,7 +221,8 @@ def load_population(manifest_dir, fmt, start, *, population_dir=None):
 def _market_signature(config):
     """Config fields that must match for a persisted D_train state to be reusable."""
     return (config.seed, config.days, config.seeker_arrivals, config.job_arrivals,
-            config.application_days, config.posting_days, config.referrals)
+            config.application_days, config.posting_days, config.referrals,
+            config.segment_drift)
 
 
 def save_market_state(path, state):

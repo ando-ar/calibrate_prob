@@ -46,7 +46,7 @@ CLIのJSONは `MarketConfig` の項目に加えて `market_start` を受け取�
 
 方策は紹介の乱数抽選だけを置き換え、ファネルの乱数ストリームは消費しない。評価日以降の arrival はデータセットのテーブルから再構成した人口スケジュールを使うため、提出の `user_id` / `item_id` はリプレイでも同じアクターを指す。詳細は [コンペ仕様](COMPETITION.md) の §5 を参照。
 
-確率設定を直接試すときは、`synthetic_funnel.shared` の `ProbabilityConfig` を `transition_probabilities` や `population_rates` に渡せます。既定値は `base_probabilities=(0.01, 0.10, 0.07)`、`probability_half_widths=(0.005, 0.05, 0.035)`、`skill_effects=(2.0, 1.5, 1.0)` です。市場のスコア学習と確率計算はこの共通設定を共有し、市場シミュレーションの乱数系列には影響しません。
+確率設定を直接試すときは、`synthetic_funnel.shared` の `ProbabilityConfig` を `transition_probabilities` や `population_rates` に渡せます。既定値は `base_probabilities=(0.01, 0.10, 0.07)`、`probability_half_widths=(0.005, 0.05, 0.035)`、`skill_effects=(2.0, 1.5, 1.0)`、`segment_drift`（職種・地域のセグメント効果と時間ドリフト、既定で穏やかに ON、issue #46）です。市場のスコア学習と確率計算はこの共通設定を共有し、市場シミュレーションの乱数系列には影響しません。
 
 以下を `synthetic_funnel/` で実行します。
 

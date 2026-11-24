@@ -15,7 +15,7 @@
 | 出力 | 用途 | 列 |
 | --- | --- | --- |
 | `candidates` | 実験・コンペ参加者向け（観測のみ） | `day_dt`、`user_id`、`item_id`、マスター属性（`seeker_skill` = `user.user_skill`、`required_skill`、`desired_salary`、`offered_salary`、`fee_rate`、`fee_if_decided_yen`、`wants_remote`、`allows_remote`）、`salary_shortfall`、`remote_mismatch`、`other_applications`、`competing_candidates` |
-| `candidates_latent` | 運営側のモデル評価向け | `candidates` の全列 + `skill_match` / `skill_shortfall` / `overqualification`、`user_motivation` / `item_motivation`、反実仮 `p_*_eventual` / `p_candidate_*` / `p_employer_*` |
+| `candidates_latent` | 運営側のモデル評価向け | `candidates` の全列 + `skill_match` / `skill_shortfall` / `overqualification`、`user_motivation` / `item_motivation`、`seeker_occupation` / `seeker_region` / `item_occupation` / `item_region`（段2でセグメント効果を適用するための入力）、反実仮 `p_*_eventual` / `p_candidate_*` / `p_employer_*` |
 
 `candidates` には潜在由来のスキル特徴量・モチベーション・確率を含めません。スコアモデルの入力にはマスター属性（`FEATURE_FIELDS` の `seeker_skill` など）が必要なため、これらは含めます。マスターの数値スキルは便宜上の代理値です。`candidates_latent` のスキル由来3列も同じ代理値から計算した値で、真のスキルそのものではありません。キーは `(day_dt, user_id, item_id)` で、未紹介ペアなので `event_id` はありません。
 
@@ -113,7 +113,11 @@ SELECT
     MAX(i.required_skill - u.user_skill, 0) AS skill_shortfall,
     MAX(u.user_skill - i.required_skill, 0) AS overqualification,
     ul.user_motivation AS user_motivation,
-    il.item_motivation AS item_motivation
+    il.item_motivation AS item_motivation,
+    u.occupation AS seeker_occupation,
+    u.region AS seeker_region,
+    i.occupation AS item_occupation,
+    i.region AS item_region
 FROM user AS u
 JOIN item AS i ON i.occupation = u.occupation
 JOIN user_latent AS ul USING (user_id)
@@ -128,13 +132,15 @@ WHERE u.arrival_dt <= :day AND (u.departure_dt IS NULL OR u.departure_dt > :day)
 
 ### 段2: mechanism で反実仮確率を付与
 
-`p_*` は SQL だけでは計算できません。`attach_latent_truth` が `FEATURE_FIELDS` を組み立て、`manifest.config.seed` と同じ seed の `ProbabilityConfig` からアンカー切片を求め、`mechanism.probability_arrays` を呼び出して `p_candidate_*` / `p_employer_*` / `p_*_eventual` を付けます。スナップショットの同時進行件数は `outcome_dt` により正確に再構成できますが、まだ紹介されていないペアに対する `p_*` はその時点の特徴量から推定した値です。
+`p_*` は SQL だけでは計算できません。`attach_latent_truth` が `FEATURE_FIELDS` を組み立て、`manifest.config.seed` と同じ seed の `ProbabilityConfig` からアンカー切片を求め、`manifest.config.segment_drift` と候補日（`day`）・市場日数（`days`）から職種・地域のセグメント効果と時間ドリフトを反映した上で、`mechanism.probability_arrays` を呼び出して `p_candidate_*` / `p_employer_*` / `p_*_eventual` を付けます。スナップショットの同時進行件数は `outcome_dt` により正確に再構成できますが、まだ紹介されていないペアに対する `p_*` はその時点の特徴量から推定した値です。
 
 ```python
 from synthetic_funnel.market_candidates import attach_latent_truth, candidate_rows
 
 latent = candidate_rows(connection, day, latent=True)
-truth = attach_latent_truth(latent, seed=manifest["config"]["seed"])
+truth = attach_latent_truth(latent, seed=manifest["config"]["seed"],
+                            segment_drift=manifest["config"].get("segment_drift"),
+                            days=manifest["config"]["days"], day=day_offset)
 # truth[0] には p_candidate_* / p_employer_* / p_*_eventual が入る
 ```
 

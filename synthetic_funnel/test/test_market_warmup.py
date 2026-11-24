@@ -39,9 +39,10 @@ class MarketWarmupTest(unittest.TestCase):
     def test_warmup_learning_scores_and_manifest(self):
         # Eight occupation/region categories make introductions much sparser; the
         # larger market is needed for at least two observed decisions in warmup.
-        # issue #40 changed the market RNG stream, so the training-capable seed
-        # was re-selected (the market stream itself is otherwise unchanged).
-        config = MarketConfig(days=240, warmup=60, seeker_arrivals=20, job_arrivals=20, seed=75)
+        # issue #40 changed the market RNG stream, and issue #46 (segment/drift)
+        # lowers the warmup decision rate, so the training-capable seed was
+        # re-selected again (seed 42 keeps at least two observed decisions).
+        config = MarketConfig(days=240, warmup=60, seeker_arrivals=20, job_arrivals=20, seed=42)
         output = self.output("warmup")
         manifest = write_market_dataset(config, output, market_start=MARKET_START)
         self.assertEqual(manifest["mode"], "market")

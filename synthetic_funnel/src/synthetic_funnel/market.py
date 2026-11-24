@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .mechanism import probability_arrays
+from .mechanism import SegmentDrift, probability_arrays
 from .rates import population_rates
 from .shared import ProbabilityConfig
 
@@ -50,6 +50,8 @@ def observed_failure_status(u,p,p_employer):
 # Categories are drawn once per arriving participant and shared by the filtering rules.
 OCCUPATIONS = ("エンジニア", "営業", "事務", "デザイン", "マーケティング", "介護", "販売", "製造")
 REGIONS = ("東京", "大阪", "名古屋", "福岡", "札幌", "仙台", "広島", "沖縄")
+OCCUPATION_INDEX = {name: index for index, name in enumerate(OCCUPATIONS)}
+REGION_INDEX = {name: index for index, name in enumerate(REGIONS)}
 
 
 # Training draws use their own stream so that neither the market stream
@@ -71,6 +73,7 @@ class MarketConfig:
     training_window_days:tuple=(1,30,365)
     training_referrals_per_day:int=10000
     negative_reservoir_size:int=100000
+    segment_drift: SegmentDrift = field(default_factory=SegmentDrift)
 
     def __post_init__(self):
         for key in ('seeker_arrivals','job_arrivals'):
@@ -85,6 +88,10 @@ class MarketConfig:
         object.__setattr__(self,'training_window_days',tuple(self.training_window_days))
         if type(self.training_referrals_per_day) is not int or self.training_referrals_per_day<1 or type(self.negative_reservoir_size) is not int or self.negative_reservoir_size<1:
             raise ValueError('Training density and reservoir size must be positive integers')
+        if isinstance(self.segment_drift, dict):
+            object.__setattr__(self, 'segment_drift', SegmentDrift(**self.segment_drift))
+        if not isinstance(self.segment_drift, SegmentDrift):
+            raise TypeError('segment_drift must be a SegmentDrift instance or mapping')
 
 
 @dataclass
@@ -295,7 +302,7 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
     rng=random.Random(stream_seed)
     # Counterfactual draws come only from a dedicated stream, never from the market stream.
     latent_rng=np.random.default_rng(np.random.SeedSequence([stream_seed,LATENT_STREAM]))
-    base=ProbabilityConfig(seed=config.seed)
+    base=ProbabilityConfig(seed=config.seed, segment_drift=config.segment_drift)
     daily_counts={}
     def count_transition(stage,t):
         daily_counts.setdefault(int(t),[0,0,0])[stage]+=1
@@ -605,7 +612,13 @@ def simulate(config, *, progress=None, snapshot_days=None, resume=None, focal_in
             sa=seeker_table[:len(seekers)] if seeker_table is not None else np.asarray(seekers,dtype=object)
             ja=job_table[:len(jobs)] if job_table is not None else np.asarray(jobs,dtype=object)
             f=features(rows,sa,ja)
-            gates=probability_arrays(base,f,sa[rows['seeker'],6].astype(float),ja[rows['job'],6].astype(float),anchors)
+            seeker_occ=np.array([OCCUPATION_INDEX[v] for v in sa[rows['seeker'],3]])
+            seeker_region=np.array([REGION_INDEX[v] for v in sa[rows['seeker'],4]])
+            job_occ=np.array([OCCUPATION_INDEX[v] for v in ja[rows['job'],3]])
+            job_region=np.array([REGION_INDEX[v] for v in ja[rows['job'],4]])
+            gates=probability_arrays(base,f,sa[rows['seeker'],6].astype(float),ja[rows['job'],6].astype(float),anchors,
+                                      segment=(seeker_occ,seeker_region,job_occ,job_region),
+                                      day=rows['day'].astype(float),days=config.days)
             rows['pa'],rows['ps'],rows['pd']=gates.prod(axis=-1).T
             rows['p_candidate_application'],rows['p_candidate_screening'],rows['p_candidate_decision']=gates[:,:,0].T
             rows['p_employer_application'],rows['p_employer_screening'],rows['p_employer_decision']=gates[:,:,1].T
@@ -680,7 +693,8 @@ def make_full_state(day,seekers,jobs,live_s,live_j,chunks,cases,queue,next_e,anc
         'version': 1,
         'seed': seed,
         'signature': (config.seed, config.days, config.seeker_arrivals, config.job_arrivals,
-                      config.application_days, config.posting_days, config.referrals),
+                      config.application_days, config.posting_days, config.referrals,
+                      config.segment_drift),
         'day': int(day),
         'seekers': [list(profile) for profile in seekers],
         'jobs': [list(profile) for profile in jobs],

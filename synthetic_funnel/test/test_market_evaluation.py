@@ -48,10 +48,12 @@ class EvaluatorTest(unittest.TestCase):
         connection = sqlite3.connect(cls.dataset / "dataset.sqlite.db")
         candidates = []
         latent = []
-        for dt in sorted(cls.eval_dts):
+        start = parse_datetime(MARKET_START)
+        for day in EVAL_DAYS:
+            dt = (start + timedelta(days=day)).isoformat()
             candidates.extend(candidate_rows(connection, dt))
             latent.extend(attach_latent_truth(candidate_rows(connection, dt, latent=True),
-                                              seed=CONFIG.seed))
+                                              seed=CONFIG.seed, days=CONFIG.days, day=day))
         connection.close()
         pq.write_table(pa.Table.from_pylist(candidates), cls.dataset / "candidates.parquet")
         latent_projection = [{key: row[key] for key in

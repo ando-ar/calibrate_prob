@@ -23,7 +23,10 @@
 | 評価 seed | **71, 72, 73, 74, 75（5 本）** | 集計決定数 ~45-50 件（m ≳ 30） |
 | `H` | **3 暦月**（120 日は config オプション） | §11 #2 |
 | `application_days` / `posting_days` / `referrals` | 20 / 40 / 5 | 仕様既定 |
+| `segment_drift` | 職種・地域のセグメント効果 `occupation_effects` / `region_effects`（各8値・和0）と時間ドリフト `drift_amplitude = 0.5` | issue #46（決定率の穏やかな異質性・非定常性） |
 | `output_format` | sqlite（配布は sqlite + parquet） | 仕様 §3.1 |
+
+> **issue #46 による config 更新**: 上記 `segment_drift` を `frozen_config.json` に追加した。決定率の生成機構が変わるため、**データバージョン（manifest SHA-256）と凍結ハッシュは以前の値から変わる**。competition1 の公開前には `build_release.py` による再生成（`organizer/metrics/`・`data_versions.json`・`baseline_aggregate.json` の更新）が必須である。手数料（fee）は一律 33% のままで変更していない。
 
 ### 1.1 配置（すべて半開区間）
 

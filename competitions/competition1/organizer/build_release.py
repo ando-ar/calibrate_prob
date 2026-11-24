@@ -162,6 +162,8 @@ def derive_candidates(connection: sqlite3.Connection, manifest: dict,
     """
     start = datetime.fromisoformat(manifest["market_start"])
     seed = manifest["config"]["seed"]
+    days = manifest["config"].get("days")
+    segment_drift = manifest["config"].get("segment_drift")
     out_dir.mkdir(parents=True, exist_ok=True)
     obs_path = out_dir / "candidates.parquet"
     lat_path = out_dir / "candidates_latent.parquet"
@@ -177,7 +179,8 @@ def derive_candidates(connection: sqlite3.Connection, manifest: dict,
                 obs_writer = pq.ParquetWriter(obs_path, candidate_schema(list(observed[0])))
             obs_writer.write_table(
                 pa.Table.from_pylist(observed, schema=candidate_schema(list(observed[0]))))
-        latent = attach_latent_truth(candidate_rows(connection, day_dt, latent=True), seed=seed)
+        latent = attach_latent_truth(candidate_rows(connection, day_dt, latent=True), seed=seed,
+                                     segment_drift=segment_drift, days=days, day=offset)
         projection = [
             {key: row[key] for key in LATENT_PROJECTION_FIELDS}
             for row in sorted(latent, key=lambda r: (r["day_dt"], r["user_id"], r["item_id"]))

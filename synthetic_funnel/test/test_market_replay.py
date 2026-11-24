@@ -134,7 +134,7 @@ class ReplayMarketTest(unittest.TestCase):
         candidates = self.candidate_pairs()
         policy = {self.EVAL_DAY: [(_idx("user", u), _idx("item", i)) for u, i in candidates]}
 
-        def high_rates(config, f, *args):
+        def high_rates(config, f, *args, **kwargs):
             return np.tile(np.array([[.9, 1.], [.95, .95], [.95, .95]]),
                            (len(f["skill_match"]), 1, 1))
 
