@@ -25,14 +25,17 @@
 
 ## 未決点（分類 C・要判断）
 
-### C-1. `replay_positive_capture` の定義が実装と一致しない
+### C-1. `replay_positive_capture` の定義が実装と一致しない（解決済み）
 
 - **場所**: COMPETITION.md §5.3 の指標表（「`replay_positive_capture` | リプレイ市場で観測された決定のうち、選択行に残った割合」）
 - **コードの真実**: `market_evaluation.py:604` で `replay_positive_capture = replay_positives / base_decided`。
   - `replay_positives`（`market_evaluation.py:540-558`）は、リプレイで枠割当により選択・紹介されたペアのうち、期限内（`H`）に決定した件数。
   - `base_decided`（`market_evaluation.py:563-575`）は、**ベース市場（配布 `events` ログ）**で評価日内に決定した件数。
 - **乖離**: ドキュメントの分母は「リプレイ市場で観測された決定」だが、実装の分母は「ベース市場（ログ）の決定」。つまり実際は「ベース市場の決定に対する、選択行の決定の捕捉率」として計算されている。リプレイ市場の評価日内の紹介は選択行のみのため、文言どおりだと常に 1 になる。
-- **対応**: 確定仕様の指標定義であり、コードと文言のどちらを正とするか（定義を直すか、実装を直すか）は運営判断が必要なため、本監査では変更していない。
+- **対応（決定済み・2026-11-24 運営承認）**: **option b（実装を変更）** を採用。`replay_positive_capture` を「選択ペアのうちリプレイ市場で決定に達した割合 = `replay_selected_positives / 選択行数`」と再定義する。1ユーザー1日5件の紹介上限により、これはリプレイ市場のユーザー単位 **Precision@5**（従来コンペの `precision_at_k` と同種）に一致する。
+  - `market_evaluation.py` の計算を `replay_positives / len(selected)` に変更（選択行が無い場合は `None`）。使用されなくなった `base_decided` のデッドコードと関連変数を除去。
+  - COMPETITION.md §5.3 の定義を Precision@5 の意味論へ更新。
+  - 本件は解決済み（commit `fix: define replay_positive_capture as precision over selected pairs`、refs #20）。
 
 ## 検証結果
 

@@ -163,7 +163,7 @@ seed 数を増やすよりも 1 seed あたりの流入数に予算を使う方�
 | `macro_daily_replay_fee_yen` | 各評価日の選択行の `fee_yen` 合計（決定のみ）を日平均し、partition を等重み平均 |
 | `total_replay_fee_yen` | 評価期間全体のリプレイ手数料合計 |
 | `replay_selected_positives` | 選択行のうち期間内に決定した件数 |
-| `replay_positive_capture` | リプレイ市場で観測された決定のうち、選択行に残った割合 |
+| `replay_positive_capture` | 選択ペアのうちリプレイ市場で決定に達した割合（`replay_selected_positives / 選択行数`）。1ユーザー1日5件の紹介上限により、これはリプレイ市場におけるユーザー単位の **Precision@5** に一致する |
 | `macro_daily_logged_fee_yen` | ベース市場で実際に紹介されたペアの手数料の日平均（既存互換） |
 | `macro_daily_counterfactual_fee_yen` | 提出順位の上位行について `p_decision_eventual × fee_if_decided_yen` を日平均 |
 
