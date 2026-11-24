@@ -6,8 +6,11 @@
 
 | ディレクトリ | 内容 |
 | --- | --- |
-| `participants/` | 参加者に配布・公開する成果物（データの入手方法・提出形式・参加者向けREADME） |
-| `organizer/` | 運営側の成果物（ルール確定書類、市場config、評価手順、実験記録） |
+| `participants/` | 参加者に配布・公開する成果物（データの入手方法・提出形式・参加者向け README） |
+| `organizer/` | 運営側の成果物（[`RULES.md`](organizer/RULES.md)、[`frozen_config.json`](organizer/frozen_config.json)、[`build_release.py`](organizer/build_release.py)） |
 
-- 潜在テーブル（`user_latent` / `item_latent` / `events_latent` / `candidates_latent`）は運営専用で `participants/` に置かない
-- 実験記録は `experiments/` の慣習（`experiments/_template/`）に従う
+- 潜在テーブル（`user_latent` / `item_latent` / `events_latent` / `candidates_latent`）は
+  運営専用で `participants/` に置かない（配布前に `build_release.py` が除去し、アサートする）。
+- 実験記録は `experiments/competition1/` に従う（`experiments/_template/` の規約）。
+- 生成物（sqlite/parquet）は `.gitignore` 済み。生成手順は
+  [`organizer/README.md`](organizer/README.md) を参照。

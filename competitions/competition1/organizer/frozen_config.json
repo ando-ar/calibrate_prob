@@ -1,0 +1,55 @@
+{
+  "name": "competition1",
+  "status": "frozen",
+  "frozen_on": "2026-11-19",
+  "frozen_by": "issue #42 (coordinator-approved 2026-11-19; all five open decisions adopted as recommended)",
+  "spec": "synthetic_funnel/docs/COMPETITION.md",
+  "density_survey": "synthetic_funnel/docs/MARKET_DENSITY.md",
+
+  "market": {
+    "market_start": "2025-01-01T00:00:00+09:00",
+    "seed": 71,
+    "seeker_arrivals": 200,
+    "job_arrivals": 200,
+    "days": 280,
+    "warmup": 90,
+    "application_days": 20,
+    "posting_days": 40,
+    "referrals": 5,
+    "training_window_days": [1, 30, 365],
+    "training_referrals_per_day": 10000,
+    "negative_reservoir_size": 100000,
+    "output_format": "sqlite"
+  },
+
+  "evaluation_seeds": [71, 72, 73, 74, 75],
+  "evaluation_seeds_note": "5 seeds chosen per the density survey: 200/200 gives ~9-10 decisions per 30-day window per seed, so 5 seeds aggregate to ~45-50 decisions (m >= 30, robust ranking). Values 71-75 are the recommended range from issue #42 / COMPETITION.md 5.5.",
+
+  "competition": {
+    "horizon": "3_calendar_months",
+    "horizon_days_equivalent": 90,
+    "max_training_rows": 300000,
+    "max_training_rows_note": "Participant-side constraint (COMPETITION.md 3.3, 50000-500000). Not enforced by the organizer evaluator.",
+    "max_per_user_per_day": 5,
+    "daily_budget_per_active_user": 5,
+    "daily_budget": null,
+    "partition_field": null,
+    "partition_note": "No partition in the v1 primary metric: the whole market is one partition, so macro_daily_replay_fee_yen is the plain daily mean. occupation/region partitioning can be added in a later revision without changing the data version.",
+    "fee_rate": 0.33,
+    "participant_learning_offsets": {"start": 90, "end": 150},
+    "evaluation_day_offsets": {"start": 150, "end": 180},
+    "evaluation_window_days": 30,
+    "evaluation_note": "Half-open [150, 180) = 30 evaluation days, evaluated on MULTIPLE days via the full replay evaluator (fallback single-day is not used because replay is implemented). D_eval_end + H = 180 + ~90 <= 280 = observation_end_exclusive.",
+    "ranking_rule": "stage_product_times_fee",
+    "ranking_alternatives": ["decision_times_fee", "odds_times_fee"],
+    "clip_epsilon": 1e-9,
+    "evaluation_scope": "replay"
+  },
+
+  "baseline": {
+    "source": "warmup-trained logistic models (model_apply_score / model_screen_score / model_decision_score) refitted from observed warmup referrals and applied to evaluation-day candidates",
+    "p_decision_baseline": "clip(p_apply,eps,1-eps) * clip(p_screen,eps,1-eps) * clip(p_decision,eps,1-eps)",
+    "order": "p_decision_baseline * fee_if_decided_yen descending; ties by (day_dt, user_id, item_id) ascending",
+    "rule": "stage_product_times_fee"
+  }
+}

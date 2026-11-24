@@ -1,0 +1,88 @@
+{
+  "name": "competition1-proof",
+  "market": {
+    "market_start": "2025-01-01T00:00:00+09:00",
+    "seed": 71,
+    "seeker_arrivals": 50,
+    "job_arrivals": 50,
+    "days": 280,
+    "warmup": 90,
+    "application_days": 20,
+    "posting_days": 40,
+    "referrals": 5,
+    "training_window_days": [
+      1,
+      30,
+      365
+    ],
+    "training_referrals_per_day": 10000,
+    "negative_reservoir_size": 100000,
+    "output_format": "sqlite"
+  },
+  "evaluation_seeds": [
+    71
+  ],
+  "competition": {
+    "horizon": "3_calendar_months",
+    "horizon_days_equivalent": 90,
+    "max_training_rows": 300000,
+    "max_training_rows_note": "Participant-side constraint (COMPETITION.md 3.3, 50000-500000). Not enforced by the organizer evaluator.",
+    "max_per_user_per_day": 5,
+    "daily_budget_per_active_user": 5,
+    "daily_budget": null,
+    "partition_field": null,
+    "partition_note": "No partition in the v1 primary metric: the whole market is one partition, so macro_daily_replay_fee_yen is the plain daily mean. occupation/region partitioning can be added in a later revision without changing the data version.",
+    "fee_rate": 0.33,
+    "participant_learning_offsets": {
+      "start": 90,
+      "end": 150
+    },
+    "evaluation_day_offsets": {
+      "start": 150,
+      "end": 180
+    },
+    "evaluation_window_days": 30,
+    "evaluation_note": "Half-open [150, 180) = 30 evaluation days, evaluated on MULTIPLE days via the full replay evaluator (fallback single-day is not used because replay is implemented). D_eval_end + H = 180 + ~90 <= 280 = observation_end_exclusive.",
+    "ranking_rule": "stage_product_times_fee",
+    "ranking_alternatives": [
+      "decision_times_fee",
+      "odds_times_fee"
+    ],
+    "clip_epsilon": 1e-09,
+    "evaluation_scope": "replay"
+  },
+  "per_seed": [
+    {
+      "seed": 71,
+      "data_version": {
+        "manifest_sha256": "80e41d134d7bd8c48790655fd1a578af4f4bdc2d70f4fe2a4e77428c9f5678c4",
+        "generator_version": "0.12.0"
+      },
+      "submission_sha256": "cb009299e6b678a23f704b736122364f878b074c97b94aad60d856256812d6bf",
+      "metrics": {
+        "macro_daily_replay_fee_yen": 159.9967449867743,
+        "total_replay_fee_yen": 479.9902349603229,
+        "replay_selected_positives": 3,
+        "replay_positive_capture": 3.0,
+        "macro_daily_logged_fee_yen": 230.98991023695314,
+        "macro_daily_counterfactual_fee_yen": 77501.0997536093
+      },
+      "evaluation_days": 30,
+      "events": 1105674,
+      "baseline": {
+        "warmup_events": 312878,
+        "training_status": "trained",
+        "submission_rows": 673550,
+        "ranking_rule": "stage_product_times_fee"
+      }
+    }
+  ],
+  "aggregate": {
+    "macro_daily_replay_fee_yen_mean": 159.9967449867743,
+    "macro_daily_replay_fee_yen_std": 0.0,
+    "macro_daily_replay_fee_yen_per_seed": [
+      159.9967449867743
+    ],
+    "total_replay_fee_yen": 479.9902349603229
+  }
+}

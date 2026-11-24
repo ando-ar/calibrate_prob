@@ -1,6 +1,10 @@
 /competitions/*
 !/competitions/competition1/
 !/competitions/competition2/
+# competition1 generated data (release pipeline artifacts; see organizer/RULES.md §2.4).
+# The manifest hash/metrics/summary are committed under organizer/metrics and experiments/.
+/competitions/competition1/organizer/data/
+/competitions/competition1/participants/data/
 .ruff_cache/
 .ty_cache/
 .mypy_cache/
