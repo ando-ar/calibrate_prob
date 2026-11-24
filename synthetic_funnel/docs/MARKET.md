@@ -10,6 +10,7 @@
 - 決定すると双方が退出し、関連する選考が終了します。求職者は応募可能期間後に進行中の選考が終わると退出します。求人は掲載期限でも退出します。参加者の退出理由はマスターに保存せず、退出日時だけを `user.departure_dt` と `item.departure_dt` に記録します。紹介ごとの取消結果は `events.status` / `outcome_dt` / `auto` に記録します（下記）。
 - 配置手数料（issue `#34`）：求人ごとに `item.fee_rate`（初期値は一律 0.33 だが列として保持）を持ち、決定した紹介に限り `events.fee_yen = item.fee_rate × item.offered_salary` を確定します。手数料は確定的な属性で、確率・潜在値ではありません。乱数を追加消費しないため、同じ seed の到達日時・確率はビット単位で不変です。提示給与のノイズ追加・生成ロジック再設計は将来課題です。
 - 観測された到達（`events` の日時列）は、市場の退出や掲載期限、観測締切の影響を受けます。これらの影響を無視した反実仮の真値は `events_latent` に保存します。紹介時点の `p_*_eventual` は紹介時点の他社応募件数と他候補者数を含めて計算します。
+- 決定率の穏やかな異質性と非定常性（issue `#46`）：`segment_drift` 設定で、職種（`occupation`）・地域（`region`）による決定段階のロジット切片の差（セグメント効果）と、市場期間を通じた基準率の緩やかな時間ドリフトを加えます。効果は「基準率の周りの小さなずれ」に留まり、職業・地域の係数は8カテゴリで和が0、ドリフトは紹介日 `t` に対して `drift_amplitude × (2 × t / days − 1)` の線形（期間中央で0）です。このため全体の期待決定率は基準率のまま保たれ、較正問題は well-posed なままです。効果は紹介時点（特徴量＋紹介日）で確定し、`events_latent` の `p_*` と `candidates_latent` の `p_*` の両方に同じ値が入ります。手数料（fee）には一切影響しません。
 
 ### 取消結果の観測（issue #32）
 
@@ -37,6 +38,8 @@
 | `application_days` | 求職者の応募可能日数。20日。 |
 | `posting_days` | 求人の掲載日数。40日。 |
 | `referrals` | 1日あたりの1人当たり紹介上限。0〜5件。既定5件。 |
+| `training_window_days`, `training_referrals_per_day`, `negative_reservoir_size` | warmup学習の期間・密度・負例プール。`[1, 30, 365]`、10,000、100,000。 |
+| `segment_drift` | 決定率のセグメント効果（`occupation_effects` / `region_effects`、各8値のロジット切片）と時間ドリフト（`drift_amplitude`）。既定は穏やかな値で ON（issue #46）。`occupation_effects` / `region_effects` の8値は和が0（職種 ±0.25、地域 ±0.12）、`drift_amplitude` は0.5。 |
 
 ## 市場内ウォームアップ学習
 
@@ -76,7 +79,7 @@ uv run --locked synthetic-funnel --run-dir $run --format sqlite
 uv run --locked synthetic-funnel --run-dir $run --seeker-arrivals 12 --job-arrivals 12
 ```
 
-`--format parquet` と `--format csv` で形式を指定できます。出力先が存在すると停止します。同じ条件で再実行するには、新しい実行ディレクトリに `input/config.json` を置きます。`manifest.json` でテーブルごとの件数、観測終了日時、`training_cutoff` と `warmup_end`、生成時間を確認できます。
+`--format parquet` と `--format csv` で形式を指定できます。出力先が存在すると停止します。同じ条件で再実行するには、新しい実行ディレクトリに `input/config.json` を置きます。`manifest.json` でテーブルごとの件数、観測終了日時、`training_cutoff` と `warmup_end`、出力ファイルのSHA-256を確認できます。
 
 SQLite では `runs/<実行ディレクトリ>/output/dataset.sqlite.db` に次の7テーブルが入ります。
 

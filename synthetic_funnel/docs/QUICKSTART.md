@@ -114,7 +114,7 @@ with closing(sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)) as connection:
 
 ## manifestで生成条件を確認する
 
-`manifest.json` には市場の設定、`market_start` と観測終了日時、`training_cutoff` と `warmup_end`、テーブルごとの件数、生成時間、出力ファイルのSHA-256が入ります。同じ条件を再現するときは、設定・seedと使用したコード・依存環境を揃えます。
+`manifest.json` には市場の設定、`market_start` と観測終了日時、`training_cutoff` と `warmup_end`、テーブルごとの件数、出力ファイルのSHA-256が入ります。同じ条件を再現するときは、設定・seedと使用したコード・依存環境を揃えます。
 
 任意のパスに出すときは `--output` と `--config` を使えます。
 

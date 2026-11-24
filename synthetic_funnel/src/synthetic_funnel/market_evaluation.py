@@ -221,7 +221,8 @@ def load_population(manifest_dir, fmt, start, *, population_dir=None):
 def _market_signature(config):
     """Config fields that must match for a persisted D_train state to be reusable."""
     return (config.seed, config.days, config.seeker_arrivals, config.job_arrivals,
-            config.application_days, config.posting_days, config.referrals)
+            config.application_days, config.posting_days, config.referrals,
+            config.segment_drift)
 
 
 def save_market_state(path, state):
@@ -560,7 +561,6 @@ def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
     events = read_table(manifest_dir, "events", fmt)
     logged_events = _event_day(events, "shoukai_dt", start)
     logged_partition_day = defaultdict(float)
-    base_decided = 0
     for day in eval_days:
         day_dt = (start + timedelta(days=day)).isoformat()
         limit = horizon_deadline(day_dt, comp)
@@ -569,7 +569,6 @@ def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
             if decision in (None, ""):
                 continue
             if parse_datetime(str(decision)) <= limit:
-                base_decided += 1
                 fee = row.get("fee_yen")
                 if fee not in (None, "") and math.isfinite(float(fee)):
                     logged_partition_day[_partition_of(row, partition_field), day] += float(fee)
@@ -601,7 +600,10 @@ def evaluate(manifest_dir, submission_path, output_dir, *, config=None,
         "macro_daily_replay_fee_yen": _macro_equal_weight(replay_partition_day),
         "total_replay_fee_yen": float(sum(replay_partition_day.values())),
         "replay_selected_positives": int(replay_positives),
-        "replay_positive_capture": (float(replay_positives / base_decided) if base_decided else None),
+        # Selected pairs reaching decision / all selected pairs.  The per-user
+        # per-day cap of 5 introductions makes this the per-user Precision@5 of
+        # the replay market (COMPETITION.md §5.3).
+        "replay_positive_capture": (float(replay_positives / len(selected)) if selected else None),
         "macro_daily_logged_fee_yen": _macro_equal_weight(logged_partition_day),
         "macro_daily_counterfactual_fee_yen": (
             _macro_equal_weight(counterfactual_partition_day) if latent is not None else None),

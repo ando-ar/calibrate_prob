@@ -15,7 +15,7 @@
 合成データでは事情が変わる。
 
 - `candidates` は D 時点で在籍し紹介条件を満たす**未紹介ペアを含む完全な候補集合**である（[日次バッチ推論候補](DAILY_CANDIDATES.md)）。
-- `candidates_latent` は同じキーに対して反実仮の `p_*_eventual` と潜在特徴を持つ。
+- `candidates_latent` は同じキーに対して反実仮の `p_*_eventual` と潜在特徴を持つ。`p_*` は紹介時点の特徴量に加えて職種・地域のセグメント効果と時間ドリフト（issue #46、`segment_drift`）を含むため、決定率はセグメント間・時期で穏やかに異なる。これは「直近ウィンドウ／セグメントを意識したデータ選択が全履歴学習に勝る」構造の根拠であり、参加者のデータ選択戦略が順位に効く（難易度分析はリポジトリの `docs/drafts/COMPETITION_DIFFICULTY.md` を参照）。
 - 市場はシミュレータなので、参加者のランキングを紹介方策として**市場を再実行（リプレイ）**できる。未紹介ペアが選ばれても実際に選考を進め、観測された `kettei_dt` と `fee_yen` が得られる。
 
 したがって主指標は「ログに載ったペアの実績」ではなく「参加者の方策のもとで市場が生んだ観測実績手数料」になる。反実仮の期待値そのもの（`p × fee`）を主指標にするのではない。合成機構によって**観測実績の母集団そのものを方策依存に拡張した**点が、このコンペの中核である。
@@ -119,7 +119,7 @@ seed 数を増やすよりも 1 seed あたりの流入数に予算を使う方�
 
 ## 4. 手数料の定義（issue #34 依存）
 
-前提タスク #34 が `events` の決定行に対して次を追加する契約を、本仕様は参照する。
+前提タスク #34 が次に示す手数料の列を追加する契約を、本仕様は参照する。配置は `fee_rate` が `item`、`fee_yen` が `events`（決定行のみ）で、`offered_salary` は `item` の既存列をそのまま使う。
 
 | 列 | 型 | 内容 |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ seed 数を増やすよりも 1 seed あたりの流入数に予算を使う方�
 | `macro_daily_replay_fee_yen` | 各評価日の選択行の `fee_yen` 合計（決定のみ）を日平均し、partition を等重み平均 |
 | `total_replay_fee_yen` | 評価期間全体のリプレイ手数料合計 |
 | `replay_selected_positives` | 選択行のうち期間内に決定した件数 |
-| `replay_positive_capture` | リプレイ市場で観測された決定のうち、選択行に残った割合 |
+| `replay_positive_capture` | 選択ペアのうちリプレイ市場で決定に達した割合（`replay_selected_positives / 選択行数`）。1ユーザー1日5件の紹介上限により、これはリプレイ市場におけるユーザー単位の **Precision@5** に一致する |
 | `macro_daily_logged_fee_yen` | ベース市場で実際に紹介されたペアの手数料の日平均（既存互換） |
 | `macro_daily_counterfactual_fee_yen` | 提出順位の上位行について `p_decision_eventual × fee_if_decided_yen` を日平均 |
 
@@ -313,4 +313,4 @@ issue #32 は `events` に `status` / `outcome_dt` / `auto` を追加する（�
 - [出力データ仕様](DATA_FORMAT.md)
 - [日次バッチ推論候補](DAILY_CANDIDATES.md)
 - [紹介履歴の確率モデル](PROBABILITY_MODEL.md)
-- [competition1 運営ルール（凍結 config・評価・提出）](../competitions/competition1/organizer/RULES.md)
+- [competition1 運営ルール（凍結 config・評価・提出）](https://github.com/ando-ar/calibrate_prob/blob/main/competitions/competition1/organizer/RULES.md)

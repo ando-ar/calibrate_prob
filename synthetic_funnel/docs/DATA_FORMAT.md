@@ -144,7 +144,7 @@ JOIN item_latent AS il USING (item_id)
 
 ## `events_latent` 潜在値（反実仮の真値）
 
-`<stage>` は `application`、`screening`、`decision` のいずれかです。このテーブルの値はすべて紹介時点で確定する潜在値で、退出・掲載期限・相手の退出による選考取消・観測打切りを無視し、紹介後も仲介が継続した場合の真値（反実仮）です。実績の選考取消理由は保存しません。校正やモデル評価の真値との比較、生成器の診断に使います。学習や推論の特徴量のうち、給与不足率・リモート不一致・他社応募件数・競合候補者数は明確に計算できるため `events` の紹介時点の列とマスター結合した属性から選びます。`skill_match` / `skill_shortfall` / `overqualification` は真のスキルが数値で表せないため、このテーブルに潜在値として保存します。`user.user_skill` / `item.required_skill` は便宜上の代理値としてマスターに残します。参加者の隠れた意欲は属性と同じく不変なので、このテーブルには重複して保存しません。`events` から `user` / `item` を経由して `user_latent.user_motivation` / `item_latent.item_motivation` を結合してください。片側確率 `p_candidate_*` / `p_employer_*` と `p_*_eventual` の値は変更ありません。
+`<stage>` は `application`、`screening`、`decision` のいずれかです。このテーブルの値はすべて紹介時点で確定する潜在値で、退出・掲載期限・相手の退出による選考取消・観測打切りを無視し、紹介後も仲介が継続した場合の真値（反実仮）です。実績の選考取消理由は保存しません。校正やモデル評価の真値との比較、生成器の診断に使います。学習や推論の特徴量のうち、給与不足率・リモート不一致・他社応募件数・競合候補者数は明確に計算できるため `events` の紹介時点の列とマスター結合した属性から選びます。`skill_match` / `skill_shortfall` / `overqualification` は真のスキルが数値で表せないため、このテーブルに潜在値として保存します。`user.user_skill` / `item.required_skill` は便宜上の代理値としてマスターに残します。参加者の隠れた意欲は属性と同じく不変なので、このテーブルには重複して保存しません。`events` から `user` / `item` を経由して `user_latent.user_motivation` / `item_latent.item_motivation` を結合してください。片側確率 `p_candidate_*` / `p_employer_*` と `p_*_eventual` は、紹介時点の特徴量・職種（`occupation`）・地域（`region`）・紹介日から mechanism が計算した値です。issue #46 より、職種・地域のセグメント効果（決定段階）と時間ドリフト（全段階）が加わっています（`segment_drift` 設定）。列名は変わりませんが、値は旧バージョンと異なります。
 
 | 列 | 型 | NULLの意味 | 内容 | 値の例 |
 | --- | --- | --- | --- | --- |
@@ -212,7 +212,7 @@ NULLがなく、`market_start` から観測終了まで1日1行が入ります�
 
 - 市場開始から `warmup` 期間（market config の `warmup`、既定365日）の紹介履歴で、応募・書類通過・決定の3モデルを学習します。
 - 学習済みモデルは以降の紹介に適用され、`model_apply_score`、`model_screen_score`、`model_decision_score` に入ります。
-- warmup 期間中（`training_cutoff` より前）の紹介のスコア列はNULLです。warmup の `events` も出力に含まれるため、学習データを確認できます。
+- warmup 期間中（`warmup_end` より前、すなわち `day < warmup`）の紹介のスコア列はNULLです。warmup の `events` も出力に含まれるため、学習データを確認できます。
 - `warmup` が `days` 以上のときは、すべての紹介のスコア列がNULLになります。
 - manifest の `training_cutoff` と `warmup_end` で、学習データと本運用データを区別できます。
 
@@ -223,13 +223,15 @@ NULLがなく、`market_start` から観測終了まで1日1行が入ります�
 | `generator`, `version` | 生成器の名前とバージョン。 |
 | `mode` | 生成モード。市場のみのため常に `"market"`。 |
 | `output_format` | `sqlite`、`parquet`、`csv` のいずれか。 |
-| `config` | 市場の全設定。`seed`、`seeker_arrivals`、`job_arrivals`、`days`、`warmup`、`application_days`、`posting_days`、`referrals`。 |
+| `config` | 市場の全設定。`seed`、`seeker_arrivals`、`job_arrivals`、`days`、`warmup`、`application_days`、`posting_days`、`referrals`、`training_window_days`、`training_referrals_per_day`、`negative_reservoir_size`。 |
 | `market_start` | 市場の開始日時。 |
 | `observation_end_exclusive` | 観測の終了境界。`market_start` に `days` を足した日時で、この日時以降の到達は記録しない。 |
-| `training_cutoff` | 学習に使ったwarmup紹介の締切日時。この日時より前の紹介の `model_*_score` はNULL。 |
-| `warmup_end` | warmup期間の終了日時。この日時以降の紹介にスコアが付く。 |
+| `training` | warmup学習の設定と結果（`method`、`status`、各ステージの学習窓・件数など）。モデルを学習できなかった場合は `status` が `not_trained` になる。 |
+| `training_cutoff` | 学習に使った最後のwarmup紹介の締切日時（`warmup_end` の約1日前）。スコアが付くのは `warmup_end` 以降の紹介（`day >= warmup`）で、`warmup_end` より前の紹介の `model_*_score` はNULL。学習できなかった場合は null。 |
+| `warmup_end` | warmup期間の終了日時。この日時以降の紹介（`day >= warmup`）にスコアが付く。 |
 | `row_counts` | テーブルごとの件数。`user`、`user_latent`、`item`、`item_latent`、`events`、`events_latent`、`daily`。 |
 | `probability_scope` | 潜在確率の意味づけの注記。 |
+| `truth_scope` | 反実仮の真値（`events_latent`）の意味づけの注記。 |
 | `files` | 出力ファイルごとのSHA-256。 |
 
 manifest は生成時間やタイムスタンプのような実行時計測値を**含みません**。したがって同一の config・seed・コード・依存環境なら manifest.json はバイト単位で同一になり、その SHA-256 を data version として使えます（issue #38）。計測値を入れると再生成のたびにハッシュが変わり data version が再現しなくなるためです。

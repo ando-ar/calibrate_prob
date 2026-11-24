@@ -48,10 +48,12 @@ class EvaluatorTest(unittest.TestCase):
         connection = sqlite3.connect(cls.dataset / "dataset.sqlite.db")
         candidates = []
         latent = []
-        for dt in sorted(cls.eval_dts):
+        start = parse_datetime(MARKET_START)
+        for day in EVAL_DAYS:
+            dt = (start + timedelta(days=day)).isoformat()
             candidates.extend(candidate_rows(connection, dt))
             latent.extend(attach_latent_truth(candidate_rows(connection, dt, latent=True),
-                                              seed=CONFIG.seed))
+                                              seed=CONFIG.seed, days=CONFIG.days, day=day))
         connection.close()
         pq.write_table(pa.Table.from_pylist(candidates), cls.dataset / "candidates.parquet")
         latent_projection = [{key: row[key] for key in
@@ -115,6 +117,12 @@ class EvaluatorTest(unittest.TestCase):
         self.assertEqual(len(first["evaluation"]["eval_days"]), len(EVAL_DAYS))
         self.assertIsInstance(first["metrics"]["macro_daily_replay_fee_yen"], float)
         self.assertGreater(first["metrics"]["macro_daily_counterfactual_fee_yen"], 0)
+        # replay_positive_capture is Precision@5: selected pairs reaching decision
+        # over all selected pairs (not over base-market decided rows).
+        selected_rows = sum(day["selected"]
+                            for day in first["evaluation"]["budget_audit"].values())
+        self.assertEqual(first["metrics"]["replay_positive_capture"],
+                         first["metrics"]["replay_selected_positives"] / selected_rows)
         for name in ("metrics.json", "daily.csv", "ranked.parquet", "summary.md"):
             self.assertTrue((self.root / "out_fee" / name).is_file())
         written = json.loads((self.root / "out_fee" / "metrics.json").read_text(encoding="utf-8"))
