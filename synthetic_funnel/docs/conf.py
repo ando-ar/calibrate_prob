@@ -15,6 +15,8 @@ html_css_files = ["layout.css"]
 html_show_copyright = False
 html_copy_source = False
 html_show_sourcelink = False
+# Internal issue notes and design drafts are not part of the published user guide.
+exclude_patterns = ["drafts", "PERFORMANCE_ISSUE40.md", "TEST_REDUCTION.md"]
 
 _REPOSITORY_FILE_LINK = re.compile(r"\[([^\]\n]+)\]\((\.\./(?:runs|src)/[^)#\n]+)\)")
 

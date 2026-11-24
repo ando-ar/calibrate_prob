@@ -1,0 +1,76 @@
+{
+  "experiment_name": "competition1",
+  "stage": "evaluate",
+  "run_id": "20261119_000000",
+  "status": "succeeded",
+  "started_at": "2026-11-19T00:00:00+00:00",
+  "finished_at": "2026-11-19T00:06:00+00:00",
+  "author": "starter-kit",
+  "hypothesis": "warmup 学習済み stage score の積 p_apply x p_screen x p_decision に fee_if_decided_yen を掛けた順序が基準。参加者解法は macro_daily_replay_fee_yen でこれを上回るべき。",
+  "conclusion": "ベースライン提出を proof config（50/50 x 280日 x 1 seed、評価 [150,180) の30日）で生成し、リプレイ評価器で実測した。主指標 macro_daily_replay_fee_yen = 159.997（決定 3 件）で非縮退。ウォームアップ学習は trained。この run は proof config の実測であり、本番（200/200 x 5 seed）のベースラインは運営が build_release.py --seeds 71,72,73,74,75 を実行した時点で新しい run_id として記録する。",
+  "data_version": {
+    "manifest_sha256": "80e41d134d7bd8c48790655fd1a578af4f4bdc2d70f4fe2a4e77428c9f5678c4",
+    "generator_version": "0.12.0",
+    "config_note": "proof config (50/50 arrivals, seed 71). Production is 200/200 (see competitions/competition1/organizer/frozen_config.json); its manifest hashes are recorded in organizer/metrics/data_versions.json when generated."
+  },
+  "seeds": {
+    "market": 71,
+    "participant": 0,
+    "sql": 0
+  },
+  "config": {
+    "horizon": "3_calendar_months",
+    "horizon_days_equivalent": 90,
+    "max_per_user_per_day": 5,
+    "daily_budget_per_active_user": 5,
+    "daily_budget": null,
+    "partition_field": null,
+    "max_training_rows": 300000,
+    "extraction_strategy": "warmup-balanced refit from observed warmup referrals only; 312878 warmup events (seed 71); no latent columns used",
+    "ranking_rule": "stage_product_times_fee",
+    "fee_rate": 0.33,
+    "evaluation_scope": "replay",
+    "market": {
+      "market_start": "2025-01-01T00:00:00+09:00",
+      "seed": 71,
+      "days": 280,
+      "warmup": 90,
+      "seeker_arrivals": 50,
+      "job_arrivals": 50,
+      "evaluation_day_offsets": {"start": 150, "end": 180},
+      "note": "proof arrivals 50/50; production frozen config uses 200/200"
+    }
+  },
+  "input_sha256": {},
+  "submission_sha256": "cb009299e6b678a23f704b736122364f878b074c97b94aad60d856256812d6bf",
+  "baseline_run_id": null,
+  "evaluator_version": "synthetic-funnel 0.12.0 (SCHEMA_VERSION=1)",
+  "git_commit": "cac356d9fe47f4980158bb2ceb0a7d693ad8388f",
+  "environment": {
+    "python": "3.14.3",
+    "packages": {
+      "synthetic-funnel": "0.12.0",
+      "numpy": "2.5.4",
+      "pyarrow": "24.0.0",
+      "scikit-learn": "1.9.1"
+    }
+  },
+  "selection_metric": "macro_daily_replay_fee_yen",
+  "metrics_path": "output/metrics.json",
+  "results": {
+    "metrics": {
+      "macro_daily_replay_fee_yen": 159.9967449867743,
+      "total_replay_fee_yen": 479.9902349603229,
+      "replay_selected_positives": 3,
+      "replay_positive_capture": 3.0,
+      "macro_daily_logged_fee_yen": 230.98991023695314,
+      "macro_daily_counterfactual_fee_yen": 77501.0997536093
+    },
+    "events": 1105674,
+    "warmup_events": 312878,
+    "training_status": "trained",
+    "submission_rows": 673550,
+    "evaluation_days": 30,
+    "note": "Proof-config baseline. Production (200/200 x 5 seeds) baseline is recorded under a new run_id once generated."
+  }
+}

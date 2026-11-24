@@ -1,0 +1,313 @@
+{
+  "schema_version": 1,
+  "metrics": {
+    "macro_daily_replay_fee_yen": 159.9967449867743,
+    "total_replay_fee_yen": 479.9902349603229,
+    "replay_selected_positives": 3,
+    "replay_positive_capture": 3.0,
+    "macro_daily_logged_fee_yen": 230.98991023695314,
+    "macro_daily_counterfactual_fee_yen": 77501.0997536093
+  },
+  "evaluation_scope": {
+    "primary": "replay_policy_dependent_observed_fee",
+    "logged": "logged_cohort_only_not_counterfactual_revenue",
+    "counterfactual": "organizer_only_candidates_latent_not_for_ranking",
+    "undecided_policy": "undecided_rows_excluded_not_zero",
+    "fallback": false
+  },
+  "config": {
+    "horizon": "3_calendar_months",
+    "max_per_user_per_day": 5,
+    "daily_budget_per_active_user": 5,
+    "daily_budget": null,
+    "partition_field": null,
+    "max_training_rows": 300000,
+    "fallback_seeds": 20
+  },
+  "data_version": {
+    "manifest_sha256": "80e41d134d7bd8c48790655fd1a578af4f4bdc2d70f4fe2a4e77428c9f5678c4",
+    "generator_version": "0.12.0"
+  },
+  "evaluation": {
+    "eval_days": [
+      "2025-05-31T00:00:00+09:00",
+      "2025-06-01T00:00:00+09:00",
+      "2025-06-02T00:00:00+09:00",
+      "2025-06-03T00:00:00+09:00",
+      "2025-06-04T00:00:00+09:00",
+      "2025-06-05T00:00:00+09:00",
+      "2025-06-06T00:00:00+09:00",
+      "2025-06-07T00:00:00+09:00",
+      "2025-06-08T00:00:00+09:00",
+      "2025-06-09T00:00:00+09:00",
+      "2025-06-10T00:00:00+09:00",
+      "2025-06-11T00:00:00+09:00",
+      "2025-06-12T00:00:00+09:00",
+      "2025-06-13T00:00:00+09:00",
+      "2025-06-14T00:00:00+09:00",
+      "2025-06-15T00:00:00+09:00",
+      "2025-06-16T00:00:00+09:00",
+      "2025-06-17T00:00:00+09:00",
+      "2025-06-18T00:00:00+09:00",
+      "2025-06-19T00:00:00+09:00",
+      "2025-06-20T00:00:00+09:00",
+      "2025-06-21T00:00:00+09:00",
+      "2025-06-22T00:00:00+09:00",
+      "2025-06-23T00:00:00+09:00",
+      "2025-06-24T00:00:00+09:00",
+      "2025-06-25T00:00:00+09:00",
+      "2025-06-26T00:00:00+09:00",
+      "2025-06-27T00:00:00+09:00",
+      "2025-06-28T00:00:00+09:00",
+      "2025-06-29T00:00:00+09:00"
+    ],
+    "horizon": "3_calendar_months",
+    "horizon_end": "2025-09-29T00:00:00+09:00",
+    "observation_end_exclusive": "2025-10-08T00:00:00+09:00",
+    "budget_audit": {
+      "2025-05-31T00:00:00+09:00": {
+        "submitted": 23538,
+        "deduplicated": 23538,
+        "per_user_capped": 3621,
+        "active_users": 789,
+        "total_budget": 3945,
+        "selected": 3621
+      },
+      "2025-06-01T00:00:00+09:00": {
+        "submitted": 23401,
+        "deduplicated": 23401,
+        "per_user_capped": 3569,
+        "active_users": 786,
+        "total_budget": 3930,
+        "selected": 3569
+      },
+      "2025-06-02T00:00:00+09:00": {
+        "submitted": 23138,
+        "deduplicated": 23138,
+        "per_user_capped": 3578,
+        "active_users": 791,
+        "total_budget": 3955,
+        "selected": 3578
+      },
+      "2025-06-03T00:00:00+09:00": {
+        "submitted": 23274,
+        "deduplicated": 23274,
+        "per_user_capped": 3620,
+        "active_users": 802,
+        "total_budget": 4010,
+        "selected": 3620
+      },
+      "2025-06-04T00:00:00+09:00": {
+        "submitted": 23225,
+        "deduplicated": 23225,
+        "per_user_capped": 3586,
+        "active_users": 784,
+        "total_budget": 3920,
+        "selected": 3586
+      },
+      "2025-06-05T00:00:00+09:00": {
+        "submitted": 23233,
+        "deduplicated": 23233,
+        "per_user_capped": 3572,
+        "active_users": 778,
+        "total_budget": 3890,
+        "selected": 3572
+      },
+      "2025-06-06T00:00:00+09:00": {
+        "submitted": 23291,
+        "deduplicated": 23291,
+        "per_user_capped": 3604,
+        "active_users": 783,
+        "total_budget": 3915,
+        "selected": 3604
+      },
+      "2025-06-07T00:00:00+09:00": {
+        "submitted": 23145,
+        "deduplicated": 23145,
+        "per_user_capped": 3592,
+        "active_users": 789,
+        "total_budget": 3945,
+        "selected": 3592
+      },
+      "2025-06-08T00:00:00+09:00": {
+        "submitted": 23559,
+        "deduplicated": 23559,
+        "per_user_capped": 3652,
+        "active_users": 805,
+        "total_budget": 4025,
+        "selected": 3652
+      },
+      "2025-06-09T00:00:00+09:00": {
+        "submitted": 23018,
+        "deduplicated": 23018,
+        "per_user_capped": 3627,
+        "active_users": 798,
+        "total_budget": 3990,
+        "selected": 3627
+      },
+      "2025-06-10T00:00:00+09:00": {
+        "submitted": 22664,
+        "deduplicated": 22664,
+        "per_user_capped": 3635,
+        "active_users": 804,
+        "total_budget": 4020,
+        "selected": 3635
+      },
+      "2025-06-11T00:00:00+09:00": {
+        "submitted": 22752,
+        "deduplicated": 22752,
+        "per_user_capped": 3615,
+        "active_users": 787,
+        "total_budget": 3935,
+        "selected": 3615
+      },
+      "2025-06-12T00:00:00+09:00": {
+        "submitted": 22739,
+        "deduplicated": 22739,
+        "per_user_capped": 3635,
+        "active_users": 791,
+        "total_budget": 3955,
+        "selected": 3635
+      },
+      "2025-06-13T00:00:00+09:00": {
+        "submitted": 22723,
+        "deduplicated": 22723,
+        "per_user_capped": 3647,
+        "active_users": 799,
+        "total_budget": 3995,
+        "selected": 3647
+      },
+      "2025-06-14T00:00:00+09:00": {
+        "submitted": 22619,
+        "deduplicated": 22619,
+        "per_user_capped": 3629,
+        "active_users": 788,
+        "total_budget": 3940,
+        "selected": 3629
+      },
+      "2025-06-15T00:00:00+09:00": {
+        "submitted": 21715,
+        "deduplicated": 21715,
+        "per_user_capped": 3554,
+        "active_users": 783,
+        "total_budget": 3915,
+        "selected": 3554
+      },
+      "2025-06-16T00:00:00+09:00": {
+        "submitted": 21783,
+        "deduplicated": 21783,
+        "per_user_capped": 3568,
+        "active_users": 785,
+        "total_budget": 3925,
+        "selected": 3568
+      },
+      "2025-06-17T00:00:00+09:00": {
+        "submitted": 21779,
+        "deduplicated": 21779,
+        "per_user_capped": 3554,
+        "active_users": 783,
+        "total_budget": 3915,
+        "selected": 3554
+      },
+      "2025-06-18T00:00:00+09:00": {
+        "submitted": 21435,
+        "deduplicated": 21435,
+        "per_user_capped": 3597,
+        "active_users": 791,
+        "total_budget": 3955,
+        "selected": 3597
+      },
+      "2025-06-19T00:00:00+09:00": {
+        "submitted": 21391,
+        "deduplicated": 21391,
+        "per_user_capped": 3585,
+        "active_users": 780,
+        "total_budget": 3900,
+        "selected": 3585
+      },
+      "2025-06-20T00:00:00+09:00": {
+        "submitted": 21537,
+        "deduplicated": 21537,
+        "per_user_capped": 3604,
+        "active_users": 790,
+        "total_budget": 3950,
+        "selected": 3604
+      },
+      "2025-06-21T00:00:00+09:00": {
+        "submitted": 21466,
+        "deduplicated": 21466,
+        "per_user_capped": 3580,
+        "active_users": 785,
+        "total_budget": 3925,
+        "selected": 3580
+      },
+      "2025-06-22T00:00:00+09:00": {
+        "submitted": 21671,
+        "deduplicated": 21671,
+        "per_user_capped": 3593,
+        "active_users": 787,
+        "total_budget": 3935,
+        "selected": 3593
+      },
+      "2025-06-23T00:00:00+09:00": {
+        "submitted": 21779,
+        "deduplicated": 21779,
+        "per_user_capped": 3545,
+        "active_users": 784,
+        "total_budget": 3920,
+        "selected": 3545
+      },
+      "2025-06-24T00:00:00+09:00": {
+        "submitted": 22247,
+        "deduplicated": 22247,
+        "per_user_capped": 3612,
+        "active_users": 798,
+        "total_budget": 3990,
+        "selected": 3612
+      },
+      "2025-06-25T00:00:00+09:00": {
+        "submitted": 21772,
+        "deduplicated": 21772,
+        "per_user_capped": 3568,
+        "active_users": 792,
+        "total_budget": 3960,
+        "selected": 3568
+      },
+      "2025-06-26T00:00:00+09:00": {
+        "submitted": 21549,
+        "deduplicated": 21549,
+        "per_user_capped": 3532,
+        "active_users": 779,
+        "total_budget": 3895,
+        "selected": 3532
+      },
+      "2025-06-27T00:00:00+09:00": {
+        "submitted": 21998,
+        "deduplicated": 21998,
+        "per_user_capped": 3542,
+        "active_users": 781,
+        "total_budget": 3905,
+        "selected": 3542
+      },
+      "2025-06-28T00:00:00+09:00": {
+        "submitted": 22458,
+        "deduplicated": 22458,
+        "per_user_capped": 3601,
+        "active_users": 790,
+        "total_budget": 3950,
+        "selected": 3601
+      },
+      "2025-06-29T00:00:00+09:00": {
+        "submitted": 22651,
+        "deduplicated": 22651,
+        "per_user_capped": 3650,
+        "active_users": 803,
+        "total_budget": 4015,
+        "selected": 3650
+      }
+    },
+    "replay_skipped_pairs": 0,
+    "replay_skip_reasons": {}
+  },
+  "fallback": null
+}

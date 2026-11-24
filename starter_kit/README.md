@@ -46,9 +46,16 @@
 3段階すべての warmup モデルが学習できる最小规模（20/20）を選びました。
 `D_eval_end + H <= observation_end_exclusive`（402 + 約90 < 730）を満たします。
 
-本番 config は `config.json` の `production_reference` に明示してあります。
-データ version は配布 `manifest.json` の SHA-256 です（この proof では
-`e973aaaac7668ec6ce8099b0be74215aa12d15ddaf1f74991433af0f9d941ea1`）。
+本番 config は `config.json` の `production_reference` に明示してあります。本番の正は
+`competitions/competition1/organizer/frozen_config.json`（issue #42 で凍結: 200/200 × 280日、
+warmup 90、評価 `[150,180)`、seed 71-75）です。
+
+データ version は配布 `manifest.json` の SHA-256 です。この proof キットの data version は
+再生成のたびに変わり得るためここではハードコードしません。competition1 本番の data version
+（seed ごとの manifest ハッシュ）は
+`competitions/competition1/organizer/metrics/data_versions.json` と
+`experiments/competition1/` の `run_metadata.json` に記録されます
+（`competitions/competition1/organizer/build_release.py` が生成時に書き出します）。
 manifest は生成時間などの実行時計測値を含まないため、同一 config/seed なら
 バイト単位で再現します（issue #38）。
 
@@ -190,21 +197,22 @@ expected_fee_yen     = p_decision_baseline × fee_if_decided_yen
 `odds_times_fee`（`p/(1-p) × fee`）にも切り替えられます。どのruleを使ったかは
 `submission_metadata.json` と `run_metadata.json` に記録してください。
 
-## 7. 評価と未実装事項
+## 7. 評価とベースライン指標
 
-評価器の CLI は仕様 §5.6 のインターフェース契約のみで、まだ実装されていません
-（issue #35 でリプレイ＋評価器を実装中）。したがって現時点では
-**ベースライン指標（`macro_daily_replay_fee_yen` 等）は未計測**です。
-評価器が利用可能になったら `submission.parquet` と `manifest.json` を渡して
-`output/metrics.json` を生成し、`experiments/competition-starter/evaluate/` の
-`run_metadata.json` と `summary.md` のプレースホルダーを埋めてください。
+評価器は issue #35 で実装済みです（`synthetic-competition evaluate` または
+`python -m synthetic_funnel.market_evaluation evaluate`）。ベースライン指標
+（`macro_daily_replay_fee_yen` 等）は `build_release.py` が生成データに対して実測し、
+`competitions/competition1/organizer/metrics/` と `experiments/competition1/` に記録します。
+この proof キット（20/20 × 730、評価 3 日）では評価日に決定が無いため主指標は縮退します
+（`experiments/competition-starter/` 参照）。本番（200/200 × 30 日 × 5 seed）では
+1 seed あたり決定 ~9-10 件で非縮退になります。
 
 ```text
 synthetic-competition evaluate \
-  --manifest <data/proof/participant/manifest.json> \
-  --truth <運営専用のリプレイ結果> \
-  --submission <data/proof/participant/submission.parquet> \
-  --config <run config> \
+  --manifest <organizer dir> \
+  --submission <submission.parquet> \
+  --candidates-latent <organizer dir> \
+  --population-dir <organizer dir> \
   --output <評価出力ディレクトリ>
 ```
 
