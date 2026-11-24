@@ -313,3 +313,4 @@ issue #32 は `events` に `status` / `outcome_dt` / `auto` を追加する（�
 - [出力データ仕様](DATA_FORMAT.md)
 - [日次バッチ推論候補](DAILY_CANDIDATES.md)
 - [紹介履歴の確率モデル](PROBABILITY_MODEL.md)
+- [competition1 運営ルール（凍結 config・評価・提出）](../competitions/competition1/organizer/RULES.md)

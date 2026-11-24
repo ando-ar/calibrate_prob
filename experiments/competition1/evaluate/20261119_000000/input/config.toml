@@ -1,0 +1,34 @@
+# Copy this file to experiments/<name>/<stage>/<run_id>/input/config.toml.
+# Paths are relative to the run directory. See synthetic_funnel/docs/COMPETITION.md.
+
+[run]
+experiment_name = "competition1"
+stage = "evaluate"
+author = "starter-kit"
+hypothesis = "warmup 学習済み stage score の積 p_apply x p_screen x p_decision に fee_if_decided_yen を掛けた順序が基準。参加者解法は macro_daily_replay_fee_yen でこれを上回るべき。"
+git_commit = "<filled by build_release.py>"
+evaluator_version = "synthetic-funnel 0.12.0"
+
+[data]
+manifest = "<organizer data dir / manifest.json>"
+manifest_sha256 = "<sha256; recorded as data_version in run_metadata.json>"
+horizon_days = 90 # 3 calendar months (H)
+
+[seeds]
+market = 71
+participant = 0
+sql = 0
+
+[learning]
+max_training_rows = 300000 # 50000-500000; full extraction is not allowed
+extraction_strategy = "warmup-balanced refit from observed warmup referrals only; no latent columns"
+
+[ranking]
+max_per_user_per_day = 5
+daily_budget_per_active_user = 5
+# daily_budget = 100000 # optional absolute cap; smaller of the two applies
+ranking_rule = "stage_product_times_fee"
+fee_rate = 0.33
+
+[submission]
+path = "<path to submission.parquet or submission.csv>"
