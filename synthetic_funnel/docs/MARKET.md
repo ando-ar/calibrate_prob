@@ -37,6 +37,7 @@
 | `application_days` | 求職者の応募可能日数。20日。 |
 | `posting_days` | 求人の掲載日数。40日。 |
 | `referrals` | 1日あたりの1人当たり紹介上限。0〜5件。既定5件。 |
+| `training_window_days`, `training_referrals_per_day`, `negative_reservoir_size` | warmup学習の期間・密度・負例プール。`[1, 30, 365]`、10,000、100,000。 |
 
 ## 市場内ウォームアップ学習
 
@@ -76,7 +77,7 @@ uv run --locked synthetic-funnel --run-dir $run --format sqlite
 uv run --locked synthetic-funnel --run-dir $run --seeker-arrivals 12 --job-arrivals 12
 ```
 
-`--format parquet` と `--format csv` で形式を指定できます。出力先が存在すると停止します。同じ条件で再実行するには、新しい実行ディレクトリに `input/config.json` を置きます。`manifest.json` でテーブルごとの件数、観測終了日時、`training_cutoff` と `warmup_end`、生成時間を確認できます。
+`--format parquet` と `--format csv` で形式を指定できます。出力先が存在すると停止します。同じ条件で再実行するには、新しい実行ディレクトリに `input/config.json` を置きます。`manifest.json` でテーブルごとの件数、観測終了日時、`training_cutoff` と `warmup_end`、出力ファイルのSHA-256を確認できます。
 
 SQLite では `runs/<実行ディレクトリ>/output/dataset.sqlite.db` に次の7テーブルが入ります。
 
