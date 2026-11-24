@@ -4,7 +4,9 @@
 > `synthetic_funnel/docs/COMPETITION.md`、市場密度の根拠は
 > `synthetic_funnel/docs/MARKET_DENSITY.md`。参加者向け案内は
 > [`../participants/README.md`](../participants/README.md)、配布パッケージの生成は
-> [`build_release.py`](build_release.py) が担う。
+> [`build_release.py`](build_release.py) が担う。**実行（開催）フェーズの手順は
+> [`specs/competition1-execution/spec.md`](../../../specs/competition1-execution/spec.md) を参照**
+> （チーム多様化の仕掛けは §9 に要約）。
 >
 > 凍結日: 2026-11-19（issue #42）。§11 の未決点 5 件はすべて下記のとおり確定した。
 
@@ -186,3 +188,19 @@ D_train までの観測履歴だけである。参加者配布パッケージは
 | `candidates_latent` | **非配布** | 保有 | 反実仮 `p_*`・潜在値 |
 | `user_latent` / `item_latent` / `events_latent` | **非配布** | 保有 | 潜在値そのもの |
 | リプレイ結果・真値 | 非配布 | 保有 | 評価時にのみ集計 |
+
+## 9. チーム多様化の仕掛け（#47、ユーザー確定 2026-11-24）
+
+解法が収束しないよう、実行フェーズで次の仕掛けを適用する（詳細は
+`specs/competition1-execution/spec.md` §2〜§3、研究は `docs/drafts/SOLUTION_DIVERSITY.md`）。
+**主指標・提出形式・data version の契約は変えない。**
+
+1. **チーム役割割当（ソフト）** — 5 チームに解法クラスを 1 つずつ割当て、解き終わるまで相互参照を禁止
+   （校正重視／ランキング重視／セグメント探索／単純モデル至上／アンサンブル型）。
+2. **反収束ルール 1 本（ハード）** — 「全チームが同一モデル族で揃うことを禁止」。
+3. **同一バックエンド＋温度/ペルソナ** — deepseek-v4.1-flash 共通、チームごとに温度と思考スタイルを変える。
+4. **副次リーダーボード（表示のみ）** — seed 間 std・ロバスト性・簡潔性・再現性を併記するが順位は変えない。
+5. **チーム別データビュー（今導入）** — 同一凍結データから、学習 `events` の期間/行数/セグメントをチームごとに
+   制限する（Team A 直近 `[120,150)`／Team B 全 `[90,150)`／Team C 職種部分集合／Team D 15 万行上限／Team E 30 万行）。
+   評価候補は全チーム同一、data version は全チーム共通（配布 `manifest.json` はバイト同一）。ビューの遵守は
+   §5.2 と同じく自己申告＋コードレビュー。
